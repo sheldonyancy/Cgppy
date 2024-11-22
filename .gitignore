@@ -3,5 +3,3 @@ build/
 cmake-build-debug/
 cmake-build-release/
 **/.DS_Store
-ThirdParty/*
-!ThirdParty/CMakeLists.txt

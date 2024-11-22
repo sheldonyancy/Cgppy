@@ -7,6 +7,13 @@ Cgppy is a computer graphics engine. The goal of this engine is to transform var
 
 ![](./screenshot.png)
 
+## Cloning
+This repository contains submodules for external dependencies and assets, so when doing a fresh clone you need to clone recursively:
+
+```
+git clone --recurse-submodules https://github.com/sheldonyancy/Cgppy.git
+```
+
 ## Graphics API Support
 
 |                  | Windows | Linux | MacOS |

@@ -30,8 +30,8 @@
 	path = ThirdParty/CGAL
 	url = https://github.com/CGAL/cgal.git
 
-[submodule "ThirdParty/"]
-	path = ThirdParty/
+[submodule "ThirdParty/jemalloc"]
+	path = ThirdParty/jemalloc
 	url = https://github.com/jemalloc/jemalloc.git
 
 [submodule "ThirdParty/boost"]

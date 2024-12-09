@@ -37,25 +37,8 @@
 
 #include <cstdint>
 
-struct mm {
-    int a;
-    char b;
-};
-
-struct alignas(16) aa{
-    alignas(8) int rendering_model;
-};
-
 
 int main(int argc, char *argv[]) {
-    aa a;
-    //uintptr_t addr0 = reinterpret_cast<uintptr_t>(&a.rendering_model);
-    //uintptr_t addr1 = reinterpret_cast<uintptr_t>(&a.model_matrix);
-
-    alignas(64) aa fuck;
-    int size = sizeof(fuck);
-
-
     //
     std::string exe_path = boost::dll::program_location().parent_path().string();
     yLogInit(exe_path.c_str());
@@ -72,7 +55,6 @@ int main(int argc, char *argv[]) {
     YRendererFrontendManager::instance()->initFrontend();
     YRendererBackendManager::instance()->initBackend();
 
-    //YAssetManager::instance()->loadAsset<YStlImporter>(yAssetsModelFile(Teapot));
     YAssetManager::instance()->loadAsset<YMdlaImporter>("");
 
     YProfiler::instance()->run();

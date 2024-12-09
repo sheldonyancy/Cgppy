@@ -34,6 +34,11 @@ extern "C" {
 
 void yGenerateUintRand(u32 count, u32* data);
 
+u32 ySsboSize();
+u32 yUboSize();
+u32 yPushConstantSize();
+
+
 
 #ifdef __cplusplus
 }

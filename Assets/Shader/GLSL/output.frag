@@ -28,8 +28,9 @@
 
 #include "define.glsl"
 #include "struct.glsl"
-#include "global_ubo.glsl"
-#include "global_scene_block.glsl"
+#include "uniform_buffer_object.glsl"
+#include "stroage_buffer_object.glsl"
+#include "push_constant_object.glsl"
 
 layout(set = 2, binding = 0) uniform sampler2D rasterization_texture;
 layout(set = 2, binding = 4) uniform sampler2DArray accumulate_textures;
@@ -41,13 +42,13 @@ layout(location = 0) in struct dto {
 layout(location = 0) out vec4 out_colour;
 
 void main() {
-    switch(global_ubo.object.rendering_model) {
+    switch(ubo.rendering_model) {
         case 0: {
-            vec3 color0 = texture(accumulate_textures, vec3(in_dto.texcoord, 0.0)).xyz;
-            vec3 color1 = texture(accumulate_textures, vec3(in_dto.texcoord, 1.0)).xyz;
-            vec3 color2 = texture(accumulate_textures, vec3(in_dto.texcoord, 2.0)).xyz;
+            vec3 color0 = push_constant_object.frame_samples[0] >= 1 ? texture(accumulate_textures, vec3(in_dto.texcoord, 0.0)).xyz : vec3(0.0);
+            vec3 color1 = push_constant_object.frame_samples[1] >= 1 ? texture(accumulate_textures, vec3(in_dto.texcoord, 1.0)).xyz : vec3(0.0);
+            vec3 color2 = push_constant_object.frame_samples[2] >= 1 ? texture(accumulate_textures, vec3(in_dto.texcoord, 2.0)).xyz : vec3(0.0);
 
-            vec3 color = (color0 + color1 + color2) / global_ubo.object.samples;
+            vec3 color = (color0 + color1 + color2) / push_constant_object.total_samples;
 
             out_colour = vec4(pow(color, vec3(0.4545)), 1.0);
             break;

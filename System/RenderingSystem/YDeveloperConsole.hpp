@@ -31,14 +31,13 @@
 
 #include "YAsyncTask.hpp"
 #include "YDefines.h"
+#include "YVulkanTypes.h"
+#include "YEventHandlerManager.hpp"
+
 
 #include <string>
 #include <vector>
 #include <iostream>
-
-struct YsVkContext;
-struct YsVkResources;
-struct YsVkRenderingSystem;
 
 
 struct YsLogLineMessage {
@@ -57,9 +56,10 @@ public:
 
     void addLogMessage(int log_level, const std::string& message);
 
-    void cmdDraw(unsigned int current_frame, unsigned int image_index);
-
-    inline void accumulateGpuFrameTime(double time) {this->m_gpu_frame_time_accumulator += time; this->m_gpu_frame_count++;};
+    void cmdDraw(YsVkCommandUnit* command_unit,
+                 u32 command_buffer_index,
+                 u32 current_frame, 
+                 u32 image_index);
 
 private:
     YDeveloperConsole();
@@ -97,12 +97,9 @@ private:
                                      "LPS Head"};
 
     //
-    int m_render_frame_count = 0;
-    u32 m_render_fps = 0;
+    
 
-    double m_gpu_frame_time_accumulator = 0;
-    u32 m_gpu_frame_count = 0;
-    u32 m_gpu_fps = 0;
+    YeRenderingModelType m_current_rendering_model_type = YeRenderingModelType::PathTracing;
 };
 
 #endif //CGPPY_YDEVELOPERCONSOLE_HPP

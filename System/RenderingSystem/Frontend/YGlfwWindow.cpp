@@ -25,14 +25,21 @@
 #include "YGlfwWindow.hpp"
 #include "YLogger.h"
 #include "YDefines.h"
-#include "RenderingSystem/Backend/Vulkan/YVulkanBackend.hpp"
+#include "YVulkanBackend.hpp"
 #include "YOpenGLBackend.hpp"
 #include "YGlobalInterface.hpp"
 #include "YSceneManager.hpp"
 #include "YEvent.hpp"
 #include "YEventHandlerManager.hpp"
 #include "YRendererBackendManager.hpp"
+#include "YDeveloperConsole.hpp"
+#include "YProfiler.hpp"
 #include "GLFW/glfw3.h"
+
+#include <iostream>
+#include <chrono>
+#include <thread>
+#include <iomanip>
 
 
 static bool mouse_left_button_is_press = false;
@@ -91,7 +98,6 @@ void glfwErrorCallback(int error_code, const char* description) {
     YERROR("GLFW Error: %i: %s", error_code, description);
 }
 
-
 YGlfwWindow::YGlfwWindow() {
     this->initVulkanEnv();
 }
@@ -102,11 +108,18 @@ YGlfwWindow::~YGlfwWindow() {
 
 void YGlfwWindow::eventLoop() {
     while (!glfwWindowShouldClose(this->m_glfw_window)) {
-        glfwPollEvents();
+        auto start_rendering = std::chrono::high_resolution_clock::now();
+        {
+            glfwPollEvents();
 
-        YEventHandlerManager::instance()->pollEvents();
+            YEventHandlerManager::instance()->pollEvents();
 
-        YRendererBackendManager::instance()->backend()->draw();
+            YRendererBackendManager::instance()->backend()->draw();
+        }
+        auto end_rendering = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::micro> duration = end_rendering - start_rendering;
+        double rendering_time = duration.count() / 1000.0;
+        YProfiler::instance()->accumulateRenderingFrameTime(rendering_time);
     }
 }
 
@@ -119,6 +132,7 @@ void YGlfwWindow::initVulkanEnv() {
     glm::ivec2 main_window_size = YGlobalInterface::instance()->getMainWindowSize();
     this->m_glfw_window = glfwCreateWindow(main_window_size.x, main_window_size.y, "Cgppy", nullptr, nullptr);
 
+    glfwSetWindowSizeLimits(this->m_glfw_window, main_window_size.x, main_window_size.y, main_window_size.x, main_window_size.y);
     glfwSetKeyCallback(this->m_glfw_window, glfwKeyCallback);
     glfwSetMouseButtonCallback(this->m_glfw_window, glfwMouseButtonCallback);
     glfwSetCursorPosCallback(this->m_glfw_window, glfwCursorPositionCallback);

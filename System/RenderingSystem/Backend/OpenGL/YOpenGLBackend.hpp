@@ -88,14 +88,14 @@ private:
                              const GLuint& texture_object,
                              const u32 slot) const;
 
-    void gapiUpdateVertexInputResource(u32 vertex_count,
-                                       void* vertex_position_data,
-                                       void* vertex_normal_data,
-                                       void* vertex_material_id_data) override;
+    void deviceUpdateVertexInput(u32 vertex_count,
+                               void* vertex_position_data,
+                               void* vertex_normal_data,
+                               void* vertex_material_id_data) override;
 
-    void gapiUpdateGlobalUboResource(void* global_ubo_data) override;
+    void deviceUpdateUbo(void* ubo_data) override;
 
-    void gapiUpdateGlobalSceneBlockResource(u32 global_scene_block_data_size, void* global_scene_block_data) override;
+    void deviceUpdateSsbo(u32 ssbo_data_size, void* ssbo_data) override;
 
     b8 frameRun() override;
 private:

@@ -212,7 +212,7 @@ void YOpenGLBackend::copyResultTextureDataToMemory() {
                           0,
                           GL_RGBA,
                           GL_UNSIGNED_BYTE,
-                          &this->m_result_texture_data.front()));
+                          this->m_result_texture_data.data()));
     GLCheck(glBindTexture(GL_TEXTURE_2D, 0));
 }
 
@@ -343,18 +343,18 @@ void YOpenGLBackend::drawImage(const YsGLObject* gl_object) {
     GLCheck(glBindVertexArray(0));
 }
 
-void YOpenGLBackend::gapiUpdateVertexInputResource(u32 vertex_count,
+void YOpenGLBackend::deviceUpdateVertexInput(u32 vertex_count,
                                                    void* vertex_position_data,
                                                    void* vertex_normal_data,
                                                    void* vertex_material_id_data) {
 
 }
 
-void YOpenGLBackend::gapiUpdateGlobalUboResource(void* global_ubo_data) {
+void YOpenGLBackend::deviceUpdateUbo(void* ubo_data) {
 
 }
 
-void YOpenGLBackend::gapiUpdateGlobalSceneBlockResource(u32 global_scene_block_data_size, void* global_scene_block_data) {
+void YOpenGLBackend::deviceUpdateSsbo(u32 ssbo_data_size, void* ssbo_data) {
 
 }
 

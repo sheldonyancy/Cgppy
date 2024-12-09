@@ -29,8 +29,9 @@
 
 #include "define.glsl"
 #include "struct.glsl"
-#include "global_ubo.glsl"
-#include "global_scene_block.glsl"
+#include "uniform_buffer_object.glsl"
+#include "stroage_buffer_object.glsl"
+#include "push_constant_object.glsl"
 
 
 layout(set = 2, binding = 2) uniform usampler2D random_texture;
@@ -55,19 +56,19 @@ float random() {
 
 GLSL_Ray rayGen(out float pdf_ray_gen) {
     vec2 offset = (vec2(random(), random()) - vec2(0.5)) * 2.0;
-    vec2 uv = (2.0*gl_FragCoord.xy - global_ubo.object.physically_based_camera.resolution + offset) / global_ubo.object.physically_based_camera.resolution;
+    vec2 uv = (2.0*gl_FragCoord.xy - ubo.physically_based_camera.resolution + offset) / ubo.physically_based_camera.resolution;
 
-    float distance_x = global_ubo.object.physically_based_camera.image_sensor_width * 0.5 * uv.x;
-    float distance_y = global_ubo.object.physically_based_camera.image_sensor_height * 0.5 * uv.y;
-    vec3 image_sensor_center = global_ubo.object.physically_based_camera.position - global_ubo.object.physically_based_camera.focal_length * global_ubo.object.physically_based_camera.forward;
-    vec3 sensor_pixel_pos = image_sensor_center + global_ubo.object.physically_based_camera.right * distance_x +  global_ubo.object.physically_based_camera.up * distance_y;
+    float distance_x = ubo.physically_based_camera.image_sensor_width * 0.5 * uv.x;
+    float distance_y = ubo.physically_based_camera.image_sensor_height * 0.5 * uv.y;
+    vec3 image_sensor_center = ubo.physically_based_camera.position - ubo.physically_based_camera.focal_length * ubo.physically_based_camera.forward;
+    vec3 sensor_pixel_pos = image_sensor_center + ubo.physically_based_camera.right * distance_x +  ubo.physically_based_camera.up * distance_y;
 
     GLSL_Ray ray;
-    ray.origin = global_ubo.object.physically_based_camera.position;
-    ray.direction = normalize(global_ubo.object.physically_based_camera.position - sensor_pixel_pos);
+    ray.origin = ubo.physically_based_camera.position;
+    ray.direction = normalize(ubo.physically_based_camera.position - sensor_pixel_pos);
 
-    pdf_ray_gen = 1.0 / pow(dot(ray.direction, global_ubo.object.physically_based_camera.forward), 3.0);
-    //pdf_ray_gen = dot(ray.direction, global_ubo.object.physically_based_camera.forward) / PI;
+    pdf_ray_gen = 1.0 / pow(dot(ray.direction, ubo.physically_based_camera.forward), 3.0);
+    //pdf_ray_gen = dot(ray.direction, ubo.physically_based_camera.forward) / PI;
 
     return ray;
 }
@@ -134,12 +135,12 @@ void hitSort(inout GLSL_HitInfo arr[MAX_ARR_SIZE], int size) {
 
 bool directIntersect(in GLSL_Ray ray, inout GLSL_IntersectInfo intersect_info) {
     float t_nearest = GLSL_INFINITY;
-    for(int i = 0; i < global_scene_block.object.vertex_count - 2; i+=3) {
+    for(int i = 0; i < ssbo.vertex_count - 2; i+=3) {
         GLSL_Triangle triangle;
-        triangle.p0 = global_scene_block.object.vertex_position[i].xyz;
-        triangle.p1 = global_scene_block.object.vertex_position[i+1].xyz;
-        triangle.p2 = global_scene_block.object.vertex_position[i+2].xyz;
-        triangle.normal = global_scene_block.object.vertex_normal[i].xyz;
+        triangle.p0 = ssbo.vertex_position[i].xyz;
+        triangle.p1 = ssbo.vertex_position[i+1].xyz;
+        triangle.p2 = ssbo.vertex_position[i+2].xyz;
+        triangle.normal = ssbo.vertex_normal[i].xyz;
         float t = 0.0;
         float a = 0.0;
         float b = 0.0;
@@ -159,8 +160,8 @@ bool directIntersect(in GLSL_Ray ray, inout GLSL_IntersectInfo intersect_info) {
             intersect_info.hit_normal = triangle.normal;
             intersect_info.dpdu = normalize(triangle.p1 - triangle.p0);
             intersect_info.dpdv = normalize(cross(intersect_info.hit_normal, intersect_info.dpdu));
-            intersect_info.material_id = global_scene_block.object.vertex_material_id[i];
-            intersect_info.entity_id = global_scene_block.object.vertex_entity_id[i];
+            intersect_info.material_id = ssbo.vertex_material_id[i];
+            intersect_info.entity_id = ssbo.vertex_entity_id[i];
             t_nearest = t;
         }
     }
@@ -176,7 +177,7 @@ bool accelerateIntersect(in GLSL_Ray ray, inout GLSL_IntersectInfo intersect_inf
     int bvh_hit_info_ptr = 0;
 
     while(-1 != current_bvh_node_index) {
-        GLSL_BVHNode current_bvh_node = global_scene_block.object.bvh_node[current_bvh_node_index];
+        GLSL_BVHNode current_bvh_node = ssbo.bvh_node[current_bvh_node_index];
         float t_min = 0.0;
         float t_max = 0.0;
         bool aabb_intersection = rayAABBIntersection(ray, current_bvh_node.aabb, t_min, t_max);
@@ -204,14 +205,14 @@ bool accelerateIntersect(in GLSL_Ray ray, inout GLSL_IntersectInfo intersect_inf
     hitSort(bvh_hit_info, bvh_hit_info_ptr);
 
     for(int n = 0; n < bvh_hit_info_ptr; ++n) {
-        GLSL_BVHNode hit_bvh_node = global_scene_block.object.bvh_node[bvh_hit_info[n].index];
+        GLSL_BVHNode hit_bvh_node = ssbo.bvh_node[bvh_hit_info[n].index];
         float t_nearest = GLSL_INFINITY;
         for(int i = hit_bvh_node.vertex_index; i < hit_bvh_node.vertex_index + hit_bvh_node.vertex_count - 2; i+=3) {
             GLSL_Triangle triangle;
-            triangle.p0 = global_scene_block.object.vertex_position[i].xyz;
-            triangle.p1 = global_scene_block.object.vertex_position[i+1].xyz;
-            triangle.p2 = global_scene_block.object.vertex_position[i+2].xyz;
-            triangle.normal = global_scene_block.object.vertex_normal[i].xyz;
+            triangle.p0 = ssbo.vertex_position[i].xyz;
+            triangle.p1 = ssbo.vertex_position[i+1].xyz;
+            triangle.p2 = ssbo.vertex_position[i+2].xyz;
+            triangle.normal = ssbo.vertex_normal[i].xyz;
             float t = 0.0;
             float a = 0.0;
             float b = 0.0;
@@ -227,11 +228,11 @@ bool accelerateIntersect(in GLSL_Ray ray, inout GLSL_IntersectInfo intersect_inf
                 intersect_info.hit = true;
                 intersect_info.t = t;
                 intersect_info.hit_pos = ray.origin + t * ray.direction;
-                intersect_info.hit_normal = global_scene_block.object.vertex_normal[i].xyz;
+                intersect_info.hit_normal = ssbo.vertex_normal[i].xyz;
                 intersect_info.dpdu = normalize(triangle.p1 - triangle.p0);
                 intersect_info.dpdv = normalize(cross(intersect_info.hit_normal, intersect_info.dpdu));
-                intersect_info.material_id = global_scene_block.object.vertex_material_id[i];
-                intersect_info.entity_id = global_scene_block.object.vertex_entity_id[i];
+                intersect_info.material_id = ssbo.vertex_material_id[i];
+                intersect_info.entity_id = ssbo.vertex_entity_id[i];
                 t_nearest = t;
             }
         }
@@ -295,10 +296,10 @@ vec3 sampleBRDF(in GLSL_Material material, out vec3 wi, out float pdf_brdf) {
 
 bool sampleLight(in GLSL_IntersectInfo intersect_object_info, inout vec3 wi, out float pdf_light) {
     GLSL_Quad light_quad;
-    light_quad.p0 = global_ubo.object.light.p0;
-    light_quad.p1 = global_ubo.object.light.p1;
-    light_quad.p2 = global_ubo.object.light.p2;
-    light_quad.p3 = global_ubo.object.light.p3;
+    light_quad.p0 = ubo.light.p0;
+    light_quad.p1 = ubo.light.p1;
+    light_quad.p2 = ubo.light.p2;
+    light_quad.p3 = ubo.light.p3;
 
     float pdf_quad;
     vec3 sampled_pos = sampleQuad(random(), random(), light_quad, pdf_quad);
@@ -322,7 +323,7 @@ bool sampleLight(in GLSL_IntersectInfo intersect_object_info, inout vec3 wi, out
     intersect_light_info.material_id = -1;
     intersect_light_info.entity_id = -1;
     if(directIntersect(ray, intersect_light_info)) {
-        if(intersect_light_info.entity_id == global_ubo.object.light.entity_id) {
+        if(intersect_light_info.entity_id == ubo.light.entity_id) {
             float r = intersect_light_info.t;
             float cos_term = abs(dot(-wi, intersect_light_info.hit_normal));
             pdf_light = r*r / cos_term * pdf_quad;
@@ -357,10 +358,10 @@ vec3 computeRadiance(in GLSL_Ray ray_in) {
         intersect_object_info.material_id = -1;
         intersect_object_info.entity_id = -1;
         if(directIntersect(ray, intersect_object_info)) {
-            GLSL_Material hit_material = global_scene_block.object.materials[intersect_object_info.material_id];
+            GLSL_Material hit_material = ssbo.materials[intersect_object_info.material_id];
 
             //
-            if((0 == i) && (intersect_object_info.entity_id == global_ubo.object.light.entity_id)) {
+            if((0 == i) && (intersect_object_info.entity_id == ubo.light.entity_id)) {
                 color = hit_material.le;
                 break;
             }
@@ -376,7 +377,7 @@ vec3 computeRadiance(in GLSL_Ray ray_in) {
                 vec3 brdf = BRDF(hit_material);
                 float cos_term = abs(wi_light_local.y);
                 if(pdf_light > 0.01) {
-                    color += throughput * brdf * cos_term * global_ubo.object.light.le / pdf_light;
+                    color += throughput * brdf * cos_term * ubo.light.le / pdf_light;
                 }
             }
 
@@ -416,9 +417,10 @@ void main() {
     GLSL_Ray ray = rayGen(pdf_ray_gen);
     vec3 radiance = computeRadiance(ray);
 
-    vec3 accmulate_value = texture(target_accumulate_texture, in_dto.texcoord).xyz;
+    vec3 accmulate_value = push_constant_object.frame_samples[push_constant_object.current_frame] >= 2.0 ? 
+                           texture(target_accumulate_texture, in_dto.texcoord).xyz : vec3(0.0);
 
-    float cos_term = dot(global_ubo.object.physically_based_camera.forward, ray.direction);
+    float cos_term = dot(ubo.physically_based_camera.forward, ray.direction);
     vec3 out_rgb = accmulate_value + ((radiance / pdf_ray_gen) * cos_term);
 
     out_colour = vec4(out_rgb, 1.0);

@@ -214,34 +214,11 @@ static void destroy(struct YsVkContext* context, YsVkPipeline* pipeline) {
     }
 }
 
-static void bind(VkCommandBuffer command_buffer, YsVkPipeline* pipeline) {
-    vkCmdBindPipeline(command_buffer,
-                      VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      pipeline->handle);
-}
-
-static void bindDescriptorSets(VkCommandBuffer command_buffer,
-                               u32 first_set,
-                               u32 descriptor_set_count,
-                               VkDescriptorSet* descriptor_sets,
-                               YsVkPipeline* pipeline) {
-    vkCmdBindDescriptorSets(command_buffer,
-                            VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            pipeline->pipeline_layout,
-                            first_set,
-                            descriptor_set_count,
-                            descriptor_sets,
-                            0,
-                            0);
-}
-
 YsVkPipeline* yVkAllocatePipelineObject() {
     YsVkPipeline* pipeline = yCMemoryAllocate(sizeof(YsVkPipeline));
     if(pipeline) {
         pipeline->create = create;
         pipeline->destroy = destroy;
-        pipeline->bind = bind;
-        pipeline->bindDescriptorSets = bindDescriptorSets;
     }
     return pipeline;
 }

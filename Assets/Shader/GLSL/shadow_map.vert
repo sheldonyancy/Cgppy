@@ -28,11 +28,10 @@
 
 #include "define.glsl"
 #include "struct.glsl"
-#include "global_ubo.glsl"
-#include "push_constants.glsl"
+#include "uniform_buffer_object.glsl"
 
 layout(location = 0) in vec4 in_position;
 
 void main() {
-    gl_Position = global_ubo.object.light.space_matrix * push_constants.object.model_matrix * vec4(in_position.xyz, 1.0);
+    gl_Position = ubo.light.space_matrix * ubo.model_matrix * vec4(in_position.xyz, 1.0);
 }

@@ -36,18 +36,18 @@ YMetalBackend::~YMetalBackend() {
 
 }
 
-void YMetalBackend::gapiUpdateVertexInputResource(u32 vertex_count,
+void YMetalBackend::deviceUpdateVertexInput(u32 vertex_count,
                                                   void* vertex_position_data,
                                                   void* vertex_normal_data,
                                                   void* vertex_material_id_data) {
 
 }
 
-void YMetalBackend::gapiUpdateGlobalUboResource(void* global_ubo_data) {
+void YMetalBackend::deviceUpdateUbo(void* ubo_data) {
 
 }
 
-void YMetalBackend::gapiUpdateGlobalSceneBlockResource(u32 global_scene_block_data_size, void* global_scene_block_data) {
+void YMetalBackend::deviceUpdateSsbo(u32 ssbo_data_size, void* ssbo_data) {
 
 }
 

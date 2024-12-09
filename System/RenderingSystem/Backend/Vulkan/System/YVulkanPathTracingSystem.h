@@ -40,13 +40,14 @@ typedef struct YsVkPathTracingSystem {
                      struct YsVkPathTracingSystem* path_tracing_system);
 
 
-    void (*rendering)(struct YsVkContext* context,
-                      struct YsVkCommandUnit* command_unit,
-                      struct YsVkResources* resources,
-                      u32 image_index,
-                      u32 current_frame,
-                      void* push_constant_data,
-                      struct YsVkPathTracingSystem* path_tracing_system);
+    void (*cmdDrawCall)(struct YsVkContext* context,
+                        struct YsVkCommandUnit* command_unit,
+                        u32 command_buffer_index,
+                        struct YsVkResources* resources,
+                        u32 image_index,
+                        u32 current_frame,
+                        void* push_constant_data,
+                        struct YsVkPathTracingSystem* path_tracing_system);
 
     struct YsVkRenderStage* render_stage;
     struct YsVkPipeline* pipeline;

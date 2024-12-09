@@ -22,47 +22,28 @@
  * SOFTWARE.
  */
 
-#if defined(__VERSION__)
-    #define GLSL_STRUCT(name) struct name
-#else
-    #define GLSL_STRUCT(name) name
-#endif
-
-
-
 struct GLSL_Triangle {
     vec3 p0;
-    float _padding1;
     vec3 p1;
-    float _padding2;
     vec3 p2;
-    float _padding3;
     vec3 normal;
-    float _padding4;
 };
 
 struct GLSL_Quad {
     vec3 p0;
-    float _padding1;
     vec3 p1;
-    float _padding2;
     vec3 p2;
-    float _padding3;
     vec3 p3;
-    float _padding4;
     vec3 normal;
-    float _padding5;
 };
 
 struct GLSL_AABB {
     vec3 min;
-    float _padding1;
     vec3 max;
-    float _padding2;
 };
 
 struct GLSL_BVHNode {
-    GLSL_STRUCT(GLSL_AABB) aabb;
+    GLSL_AABB aabb;
     int left_node_index;
     int right_node_index;
     int vertex_index;
@@ -70,37 +51,28 @@ struct GLSL_BVHNode {
 };
 
 struct GLSL_RasterizationCamera {
-    vec4 position;
+    vec3 position;
     mat4 view_matrix;
     mat4 projection_matrix;
 };
 
 struct GLSL_PhysicallyBasedCamera {
     vec3 position;
-    float _padding1;
     vec3 target;
-    float _padding2;
     vec3 forward;
-    float _padding3;
     vec3 right;
-    float _padding4;
     vec3 up;
-    float _padding5;
     vec2 resolution;
     float focal_length;
     float image_sensor_width;
     float image_sensor_height;
-    float _padding6;
 };
 
 struct GLSL_Material {
     vec4 albedo;
     int brdf_type;
-    float _padding1[3];
     vec3 kd;
-    float _padding2;
     vec3 le;
-    float _padding3;
 };
 
 struct GLSL_Ray {
@@ -126,44 +98,11 @@ struct GLSL_IntersectInfo {
 
 struct GLSL_Light {
     vec3 center;
-    float _padding1;
     vec3 p0;
-    float _padding2;
     vec3 p1;
-    float _padding3;
     vec3 p2;
-    float _padding4;
     vec3 p3;
-    float _padding5;
     mat4 space_matrix;
     vec3 le;
-    float _padding6;
     int entity_id;
-    float _padding7[3];
-};
-
-struct GLSL_GlobalUniformObject {
-    int rendering_model;
-    int accumulate_image_index;
-    int samples;
-    GLSL_STRUCT(GLSL_RasterizationCamera) rasterization_camera;
-    GLSL_STRUCT(GLSL_PhysicallyBasedCamera) physically_based_camera;
-    GLSL_STRUCT(GLSL_Light) light;
-};
-
-struct GLSL_PushConstantsObject {
-    mat4 model_matrix;
-};
-
-struct GLSL_GlobalSceneBlock{
-    int bvh_node_count;
-    int material_count;
-    int vertex_count;
-    float _padding1;
-    GLSL_STRUCT(GLSL_BVHNode) bvh_node[64];
-    GLSL_STRUCT(GLSL_Material) materials[32];
-    vec4 vertex_position[256];
-    vec4 vertex_normal[256];
-    int vertex_material_id[256];
-    int vertex_entity_id[256];
 };

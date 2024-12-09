@@ -53,7 +53,6 @@ void yLogOutput(YeLogLevel level, const i8* message, ...);
 
 void yCReportAssertionFailure(const i8* expression, const i8* message, const i8* file, i32 line);
 
-void yRenderDeveloperConsole(u32 current_frame, u32 image_index);
 
 #ifdef __cplusplus
 }

@@ -33,8 +33,6 @@
 #include <cglm/vec4.h>
 #include <cglm/vec4-ext.h>
 
-#include "GLSL/Common/struct.glsl"
-
 typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;

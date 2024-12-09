@@ -201,13 +201,25 @@ static b8 selectPhysicalDevice(YsVkContext* context) {
     VkPhysicalDeviceProperties properties;
     vkGetPhysicalDeviceProperties(physical_devices[0], &properties);
 
-    VkPhysicalDeviceLimits limits = properties.limits;
-    if (limits.timestampPeriod == 0){
+    if (properties.limits.timestampPeriod == 0){
         YWARN("The selected device does not support timestamp queries!");
     }
 
+    YINFO("Max Push Constants Size: %u", properties.limits.maxPushConstantsSize);
+
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceFeatures(physical_devices[0], &features);
+    
+    VkPhysicalDeviceVulkan12Features vulkan_1_2_features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    vulkan_1_2_features.pNext = NULL;
+    VkPhysicalDeviceFeatures2 device_features2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+    device_features2.pNext = &vulkan_1_2_features;
+    vkGetPhysicalDeviceFeatures2(physical_devices[0], &device_features2);
+    if (vulkan_1_2_features.hostQueryReset) {
+        YINFO("vulkan12Features hostQueryReset is supported");
+    } else {
+        YWARN("vulkan12Features hostQueryReset is not supported");
+    }
 
     VkPhysicalDeviceMemoryProperties memory;
     vkGetPhysicalDeviceMemoryProperties(physical_devices[0], &memory);
@@ -266,6 +278,7 @@ static b8 selectPhysicalDevice(YsVkContext* context) {
     context->device->physical_device = physical_devices[0];
     context->device->properties = properties;
     context->device->features = features;
+    context->device->features_12 = vulkan_1_2_features;
     context->device->memory = memory;
 
     YINFO("Physical device selected.");
@@ -305,9 +318,6 @@ static b8 create(YsVkContext* context) {
         queue_create_infos[i].pQueuePriorities = &queue_priority;
     }
 
-    VkPhysicalDeviceFeatures device_features = {};
-    device_features.samplerAnisotropy = VK_TRUE;
-
     b8 portability_required = false;
     u32 available_extension_count = 0;
     VK_CHECK(vkEnumerateDeviceExtensionProperties(context->device->physical_device, 0, &available_extension_count, NULL));
@@ -333,11 +343,12 @@ static b8 create(YsVkContext* context) {
     VkDeviceCreateInfo device_create_info = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     device_create_info.queueCreateInfoCount = context->device->graphics_compute_command_units_count;
     device_create_info.pQueueCreateInfos = queue_create_infos;
-    device_create_info.pEnabledFeatures = &device_features;
+    device_create_info.pEnabledFeatures = &context->device->features;
     device_create_info.enabledExtensionCount = extension_count;
     device_create_info.ppEnabledExtensionNames = extension_names;
     device_create_info.enabledLayerCount = 0;
     device_create_info.ppEnabledLayerNames = 0;
+    device_create_info.pNext = &context->device->features_12;
     VK_CHECK(vkCreateDevice(
             context->device->physical_device,
             &device_create_info,
@@ -498,10 +509,8 @@ static void commandBufferAllocateAndBeginSingleUse(YsVkContext* context,
 static void commandBufferEndSingleUse(YsVkContext* context,
                                       YsVkCommandUnit* command_unit,
                                       VkCommandBuffer* tmp_command_buffer) {
-    // End the command buffer.
     commandBufferEnd(*tmp_command_buffer);
 
-    // Submit the queue
     VkSubmitInfo submit_info = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = tmp_command_buffer;
@@ -510,10 +519,8 @@ static void commandBufferEndSingleUse(YsVkContext* context,
                            &submit_info,
                            VK_NULL_HANDLE));
 
-    // Wait for it to finish
     VK_CHECK(vkQueueWaitIdle(command_unit->queue));
 
-    // Free the command buffer.
     commandBufferFree(context,
                       command_unit,
                       tmp_command_buffer);

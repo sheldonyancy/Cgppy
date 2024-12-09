@@ -7,4 +7,5 @@ target_sources(Cgppy PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/YAsyncTask.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/YThreadSafeQueue.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/YGlobalFunction.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/YProfiler.cpp
 )

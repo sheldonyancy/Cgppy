@@ -51,21 +51,18 @@ void YPhysicsSystem::buildBVH() {
     std::vector<YsMeshComponent*> mesh_components = YSceneManager::instance()->getComponents<YsMeshComponent>();
     this->m_root_bvh_node = std::make_unique<YsBVHNodeComponent>();
     this->recursiveCreateBVH(mesh_components, this->m_root_bvh_node.get(), 16);
-    this->recursiveFillingBVHStructureBuffer(this->m_root_bvh_node.get());
-
-    int x = 0;
 }
 
 void YPhysicsSystem::recursiveCreateBVH(const std::vector<YsMeshComponent*>& meshes, YsBVHNodeComponent* node, int max_depth, int current_depth) {
     node->aabb = this->computeAABB(meshes);
 
     if(current_depth > max_depth) {
-        this->fillingVertexData(meshes, node);
+        this->updateBVHNode(meshes, node);
         return;
     }
 
     if(1 == meshes.size()) {
-        this->fillingVertexData(meshes, node);
+        this->updateBVHNode(meshes, node);
         return;
     }
 
@@ -119,25 +116,17 @@ void YPhysicsSystem::recursiveCreateBVH(const std::vector<YsMeshComponent*>& mes
     }
 
     if(node->isLeaf()) {
-        this->fillingVertexData(meshes, node);
+        this->updateBVHNode(meshes, node);
         return;
     }
 }
 
-void YPhysicsSystem::fillingVertexData(const std::vector<YsMeshComponent*>& meshes, YsBVHNodeComponent* node) {
+void YPhysicsSystem::updateBVHNode(const std::vector<YsMeshComponent*>& meshes, YsBVHNodeComponent* node) {
     node->meshes = meshes;
+    u32 vertex_index = 0;
     for(auto mesh : meshes) {
-        this->m_mesh_vertex_index_map.insert(std::make_pair(mesh, YRendererBackendManager::instance()->backend()->vertexCount()));
-        YRendererBackendManager::instance()->backend()->pushBackVertexPositions(mesh->positions.begin(), mesh->positions.end());
-        YRendererBackendManager::instance()->backend()->pushBackVertexNormals(mesh->normals.begin(), mesh->normals.end());
-
-        YsEntity* entity = YSceneManager::instance()->getEntity(mesh);
-        YsMaterialComponent* material = entity->getComponent<YsMaterialComponent>();
-        int material_id = YMaterialSystem::instance()->materialId(material);
-        std::vector<i32> vertex_material_id(mesh->positions.size(), material_id);
-        std::vector<i32> vertex_entity_id(mesh->positions.size(), entity->id);
-        YRendererBackendManager::instance()->backend()->pushBackVertexMaterialId(vertex_material_id.begin(), vertex_material_id.end());
-        YRendererBackendManager::instance()->backend()->pushBackVertexEntitylId(vertex_entity_id.begin(), vertex_entity_id.end());
+        this->m_mesh_vertex_index_map.insert(std::make_pair(mesh, vertex_index));
+        vertex_index += mesh->positions.size();
     }
 }
 
@@ -167,39 +156,4 @@ YsAABBComponent YPhysicsSystem::computeAABB(const std::vector<YsMeshComponent*>&
     }
 
     return aabb;
-}
-
-void YPhysicsSystem::recursiveFillingBVHStructureBuffer(YsBVHNodeComponent* node) {
-    GLSL_BVHNode glsl_bvh_node = {};
-    glsl_bvh_node.right_node_index = -1;
-    glsl_bvh_node.left_node_index = -1;
-    glsl_bvh_node.vertex_index = -1;
-    this->m_bvh_structure_buffer.emplace_back(glsl_bvh_node);
-    u32 buffer_index = this->m_bvh_structure_buffer.size() - 1;
-
-    yVec3ToC(node->aabb.min, this->m_bvh_structure_buffer[buffer_index].aabb.min);
-    yVec3ToC(node->aabb.max, this->m_bvh_structure_buffer[buffer_index].aabb.max);
-
-    if(nullptr != node->left) {
-        this->m_bvh_structure_buffer[buffer_index].left_node_index = this->m_bvh_structure_buffer.size();
-        this->recursiveFillingBVHStructureBuffer(node->left.get());
-    } else {
-        this->m_bvh_structure_buffer[buffer_index].left_node_index = -1;
-    }
-
-    if(nullptr != node->right) {
-        this->m_bvh_structure_buffer[buffer_index].right_node_index = this->m_bvh_structure_buffer.size();
-        this->recursiveFillingBVHStructureBuffer(node->right.get());
-    } else {
-        this->m_bvh_structure_buffer[buffer_index].right_node_index = -1;
-    }
-
-    if(node->isLeaf()) {
-        this->m_bvh_structure_buffer[buffer_index].vertex_index = this->m_mesh_vertex_index_map.find(node->meshes.front())->second;
-        for(auto mesh : node->meshes) {
-            this->m_bvh_structure_buffer[buffer_index].vertex_count += mesh->positions.size();
-        }
-    } else {
-        this->m_bvh_structure_buffer[buffer_index].vertex_count = 0;
-    }
 }

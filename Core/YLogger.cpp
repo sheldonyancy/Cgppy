@@ -92,7 +92,3 @@ extern "C" void yLogOutput(YeLogLevel level, const i8* message, ...)
 void yCReportAssertionFailure(const i8* expression, const i8* message, const i8* file, i32 line) {
     YFATAL("Assertion Failure: %s, message: '%s', in file: %s, line: %d\n", expression, message, file, line);
 }
-
-void yRenderDeveloperConsole(u32 current_frame, u32 image_index) {
-    YDeveloperConsole::instance()->cmdDraw(current_frame, image_index);
-}

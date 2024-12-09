@@ -27,6 +27,7 @@
 
 #include "YDefines.h"
 #include "YAsyncTask.hpp"
+#include "YGLSLStructs.hpp"
 
 #include <list>
 
@@ -37,9 +38,9 @@
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-
-
 #include <vector>
+
+struct YsBVHNodeComponent;
 
 enum class YeRendererBackendApi : unsigned char {
     VULKAN,
@@ -54,75 +55,68 @@ class YRendererBackend {
 public:
     ~YRendererBackend();
 
+    void updateHostVertexInput();
+    void updateHostSsbo();
+    void updateHostUbo();
+
+    inline void setNeedDraw(bool status) {this->m_need_draw = status;}
     void draw();
-
-    void pushBackVertexPositions(std::vector<glm::fvec4>::iterator input_first, std::vector<glm::fvec4>::iterator input_last);
-    void pushBackVertexNormals(std::vector<glm::fvec4>::iterator input_first, std::vector<glm::fvec4>::iterator input_last);
-    void pushBackVertexMaterialId(std::vector<i32>::iterator input_first, std::vector<i32>::iterator input_last);
-    void pushBackVertexEntitylId(std::vector<i32>::iterator input_first, std::vector<i32>::iterator input_last);
-
-    inline i32 vertexCount() {return this->m_vertex_positions.size();}
-    inline void* vertexPositionsData() {return &(this->m_vertex_positions.front());}
-    inline void* vertexNormalsData() {return &(this->m_vertex_normals.front());}
-    inline void* vertexMaterialIdData() {return &(this->m_vertex_material_id.front());}
-    inline void* vertexEntityIdData() {return &(this->m_vertex_entity_id.front());}
-
-    void updateVertexInputResource();
-    void updateGlobalSceneBlockResource();
 
     virtual void changingRenderingModel(int model) = 0;
 
-    inline i32 samples() {return this->m_global_ubo_data.samples;}
+    inline i32 samples() {return this->m_push_constant.total_samples;}
 
     void rotatePhysicallyBasedCamera(const glm::fquat& rotation);
 
 protected:
     YRendererBackend();
 
-    void updateGlobalUboResource();
-
     virtual b8 framePrepare(i32* accumulate_image_index) = 0;
     virtual b8 frameRun() = 0;
     virtual b8 framePresent() = 0;
 
-    virtual void gapiUpdateVertexInputResource(u32 vertex_count,
-                                               void* vertex_position_data,
-                                               void* vertex_normal_data,
-                                               void* vertex_material_id_data) = 0;
+    virtual void deviceUpdateVertexInput(u32 vertex_count,
+                                       void* vertex_position_data,
+                                       void* vertex_normal_data,
+                                       void* vertex_material_id_data) = 0;
 
-    virtual void gapiUpdateGlobalUboResource(void* global_ubo_data) = 0;
+    virtual void deviceUpdateSsbo(u32 ssbo_data_size, void* ssbo_data) = 0;
 
-    virtual void gapiUpdateGlobalSceneBlockResource(u32 global_scene_block_data_size, void* global_scene_block_data) = 0;
+    virtual void deviceUpdateUbo(void* ubo_data) = 0;
 
-    virtual void gapiRotatePhysicallyBasedCamera() = 0;
+private:
+    void recursiveFillingBVHBuffer(std::vector<GLSL_BVHNode>* bvh_buffers, YsBVHNodeComponent* node);    
 
 protected:
     bool m_init_finished;
 
-    bool m_paint_result;
+    bool m_need_draw;
 
     bool m_need_draw_shadow_mapping;
     bool m_need_draw_rasterization;
     bool m_need_draw_path_tracing;
-    //
-    glm::ivec2 m_shadow_map_image_resolution;
 
-    // vertex_data;
+    bool m_need_update_device_vertex_input;
+    bool m_need_update_device_ssbo;
+    bool m_need_update_device_ubo;
+
+    // vertex_data
     std::vector<glm::fvec4> m_vertex_positions;
     std::vector<glm::fvec4> m_vertex_normals;
     std::vector<i32> m_vertex_material_id;
     std::vector<i32> m_vertex_entity_id;
 
-    GLSL_GlobalUniformObject m_global_ubo_data;
-    GLSL_GlobalSceneBlock m_global_scene_block_data;
-    GLSL_PushConstantsObject push_constants_data;
+    // ssbo_data
+    GLSL_SSBO m_ssbo = {};
+    // ubo_data
+    GLSL_UBO m_ubo = {};
+    // push_constant_data
+    GLSL_PushConstantObject m_push_constant = {};
 
     //
+    glm::ivec2 m_frame_buffer_size;
     u32 m_image_index;
     u32 m_current_frame;
-
-    //
-    std::unique_ptr<YAsyncTask<void>> m_async_task;
 };
 
 

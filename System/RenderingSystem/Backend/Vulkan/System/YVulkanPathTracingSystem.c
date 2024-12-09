@@ -31,9 +31,10 @@
 #include "YLogger.h"
 #include "YCMemoryManager.h"
 #include "YAssets.h"
+#include "YGlobalFunction.h"
 
 
-static b8 initializeVkPathTracingSystem(YsVkContext* context,
+static b8 initialize(YsVkContext* context,
                                         YsVkResources* resources,
                                         YsVkPathTracingSystem* path_tracing_system) {
     //
@@ -127,9 +128,11 @@ static b8 initializeVkPathTracingSystem(YsVkContext* context,
     path_tracing_pipeline_config->vertex_input_info = &pipeline_vertex_info;
     path_tracing_pipeline_config->descriptor_set_layout_count = 3;
     path_tracing_pipeline_config->descriptor_set_layouts = (VkDescriptorSetLayout*)yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * path_tracing_pipeline_config->descriptor_set_layout_count);
-    path_tracing_pipeline_config->descriptor_set_layouts[0] = resources->global_ubo_descriptor->descriptor_set_layout;
-    path_tracing_pipeline_config->descriptor_set_layouts[1] = resources->global_scene_block_descriptor->descriptor_set_layout;
+    path_tracing_pipeline_config->descriptor_set_layouts[0] = resources->ubo_descriptor->descriptor_set_layout;
+    path_tracing_pipeline_config->descriptor_set_layouts[1] = resources->ssbo_descriptor->descriptor_set_layout;
     path_tracing_pipeline_config->descriptor_set_layouts[2] = resources->image_descriptor->descriptor_set_layout;
+    path_tracing_pipeline_config->push_constant_range_count = resources->push_constant_range_count;
+    path_tracing_pipeline_config->push_constant_range = resources->push_constant_range;
     path_tracing_pipeline_config->viewport.x = 0.0f;
     path_tracing_pipeline_config->viewport.y = 0.0f;
     path_tracing_pipeline_config->viewport.width = resources->path_tracing_accumulate_image.create_info->extent.width;
@@ -224,15 +227,16 @@ static b8 initializeVkPathTracingSystem(YsVkContext* context,
     return true;
 }
 
-static void rendering(YsVkContext* context,
-                      YsVkCommandUnit* command_unit,
-                      YsVkResources* resources,
-                      u32 image_index,
-                      u32 current_frame,
-                      void* push_constant_data,
-                      YsVkPathTracingSystem* path_tracing_system) {
+static void cmdDrawCall(YsVkContext* context,
+                        YsVkCommandUnit* command_unit,
+                        u32 command_buffer_index,
+                        YsVkResources* resources,
+                        u32 image_index,
+                        u32 current_frame,
+                        void* push_constant_data,
+                        YsVkPathTracingSystem* path_tracing_system) {
     //
-    resources->transitionImageLayout(command_unit->command_buffers[0],
+    resources->transitionImageLayout(command_unit->command_buffers[command_buffer_index],
                                      &resources->path_tracing_accumulate_image,
                                      path_tracing_system->accumulate_image_index,
                                      1,
@@ -244,7 +248,7 @@ static void rendering(YsVkContext* context,
                                      command_unit->queue_family_index,
                                      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                                      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-    resources->transitionImageLayout(command_unit->command_buffers[0],
+    resources->transitionImageLayout(command_unit->command_buffers[command_buffer_index],
                                      &resources->path_tracing_random_image,
                                      path_tracing_system->accumulate_image_index,
                                      1,
@@ -277,57 +281,65 @@ static void rendering(YsVkContext* context,
     clear_value.color.float32[2] = 0.0f;
     clear_value.color.float32[3] = 1.0f;
 
-    vkCmdSetViewport(command_unit->command_buffers[0], 0, 1, &viewport);
-    vkCmdSetScissor(command_unit->command_buffers[0], 0, 1, &scissor);
+    vkCmdSetViewport(command_unit->command_buffers[command_buffer_index], 0, 1, &viewport);
+    vkCmdSetScissor(command_unit->command_buffers[command_buffer_index], 0, 1, &scissor);
 
-    path_tracing_system->render_stage->renderPassBegin(command_unit->command_buffers[0],
-                                                       &path_tracing_system->render_stage->framebuffers[current_frame],
-                                                       scissor,
-                                                       path_tracing_system->render_stage->create_info->attachment_count,
-                                                       &clear_value,
-                                                       path_tracing_system->render_stage);
+    VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    render_pass_begin_info.renderPass = path_tracing_system->render_stage->render_pass_handle;
+    render_pass_begin_info.framebuffer = path_tracing_system->render_stage->framebuffers[current_frame];
+    render_pass_begin_info.renderArea = scissor;
+    render_pass_begin_info.clearValueCount = path_tracing_system->render_stage->create_info->attachment_count;
+    render_pass_begin_info.pClearValues = &clear_value;
+    vkCmdBeginRenderPass(command_unit->command_buffers[command_buffer_index], 
+                         &render_pass_begin_info,
+                         VK_SUBPASS_CONTENTS_INLINE);                                                     
 
     //
-    path_tracing_system->pipeline->bind(command_unit->command_buffers[0], path_tracing_system->pipeline);
+    vkCmdBindPipeline(command_unit->command_buffers[command_buffer_index],
+                      VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      path_tracing_system->pipeline->handle);
 
 
     VkBuffer vertex_buffers[2] = {path_tracing_system->vertex_input_position_buffer->handle,
                                   path_tracing_system->vertex_input_texcoord_buffer->handle};
     VkDeviceSize vertex_offsets[2] = {0};
-    vkCmdBindVertexBuffers(command_unit->command_buffers[0],
+    vkCmdBindVertexBuffers(command_unit->command_buffers[command_buffer_index],
                            0,
                            2,
                            vertex_buffers,
                            vertex_offsets);
-    vkCmdBindIndexBuffer(command_unit->command_buffers[0],
+    vkCmdBindIndexBuffer(command_unit->command_buffers[command_buffer_index],
                          path_tracing_system->vertex_input_index_buffer->handle,
                          0,
                          VK_INDEX_TYPE_UINT32);
 
-
-
-    VkDescriptorSet descriptor_sets[3] = {resources->global_ubo_descriptor->descriptor_sets[image_index],
-                                          resources->global_scene_block_descriptor->descriptor_sets[image_index],
+    VkDescriptorSet descriptor_sets[3] = {resources->ubo_descriptor->descriptor_sets[image_index],
+                                          resources->ssbo_descriptor->descriptor_sets[image_index],
                                           resources->image_descriptor->descriptor_sets[image_index]};
-    path_tracing_system->pipeline->bindDescriptorSets(command_unit->command_buffers[0],
-                                                      resources->global_ubo_descriptor->first_set,
-                                                      3,
-                                                      descriptor_sets,
-                                                      path_tracing_system->pipeline);
+    vkCmdBindDescriptorSets(command_unit->command_buffers[command_buffer_index],
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            path_tracing_system->pipeline->pipeline_layout,
+                            resources->ubo_descriptor->first_set,
+                            3,
+                            descriptor_sets,
+                            0,
+                            NULL);
+    
+    vkCmdPushConstants(command_unit->command_buffers[command_buffer_index],
+                       path_tracing_system->pipeline->pipeline_layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0,
+                       yPushConstantSize(),
+                       push_constant_data);
 
-    resources->cmdPushConstants(command_unit->command_buffers[0],
-                                path_tracing_system->pipeline,
-                                push_constant_data);
-
-    vkCmdDrawIndexed(command_unit->command_buffers[0],
+    vkCmdDrawIndexed(command_unit->command_buffers[command_buffer_index],
                      6,
                      1,
                      0,
                      0,
                      0);
 
-    //
-    path_tracing_system->render_stage->renderPassEnd(command_unit->command_buffers[0]);
+    vkCmdEndRenderPass(command_unit->command_buffers[command_buffer_index]);
 }
 
 
@@ -335,8 +347,8 @@ static void rendering(YsVkContext* context,
 YsVkPathTracingSystem* yVkPathTracingSystemCreate() {
     YsVkPathTracingSystem* path_tracing_system = yCMemoryAllocate(sizeof(YsVkPathTracingSystem));
     if(path_tracing_system) {
-        path_tracing_system->initialize = initializeVkPathTracingSystem;
-        path_tracing_system->rendering = rendering;
+        path_tracing_system->initialize = initialize;
+        path_tracing_system->cmdDrawCall = cmdDrawCall;
     }
 
     return path_tracing_system;

@@ -25,8 +25,12 @@
 #include "YAssets.h"
 #include "YGlobalInterface.hpp"
 #include "YShaderManager.hpp"
+#include "YLogger.h"
 
 #include <map>
+#include <iostream>
+#include <filesystem>
+
 
 static std::map<enum YeAssetsImage, std::string> g_image_file_map;
 static std::map<enum YeAssetsShader, std::string> g_glsl_file_map;
@@ -51,14 +55,25 @@ void yInitAssets() {
     g_glsl_file_map.emplace(YeAssetsShader::Path_Tracing_Vert, project_path + "/Assets/Shader/GLSL/path_tracing.vert");
     g_glsl_file_map.emplace(YeAssetsShader::Path_Tracing_Frag, project_path + "/Assets/Shader/GLSL/path_tracing.frag");
 
-    g_spv_file_map.emplace(YeAssetsShader::Output_Vert, exe_path + "/Assets/Shader/spv_glsl/output.vert.spv");
-    g_spv_file_map.emplace(YeAssetsShader::Output_Frag, exe_path + "/Assets/Shader/spv_glsl/output.frag.spv");
-    g_spv_file_map.emplace(YeAssetsShader::Rasterization_Vert, exe_path + "/Assets/Shader/spv_glsl/rasterization.vert.spv");
-    g_spv_file_map.emplace(YeAssetsShader::Rasterization_Frag, exe_path + "/Assets/Shader/spv_glsl/rasterization.frag.spv");
-    g_spv_file_map.emplace(YeAssetsShader::Shadow_Map_Vert, exe_path + "/Assets/Shader/spv_glsl/shadow_map.vert.spv");
-    g_spv_file_map.emplace(YeAssetsShader::Shadow_Map_Frag, exe_path + "/Assets/Shader/spv_glsl/shadow_map.frag.spv");
-    g_spv_file_map.emplace(YeAssetsShader::Path_Tracing_Vert, exe_path + "/Assets/Shader/spv_glsl/path_tracing.vert.spv");
-    g_spv_file_map.emplace(YeAssetsShader::Path_Tracing_Frag, exe_path + "/Assets/Shader/spv_glsl/path_tracing.frag.spv");
+    std::string spv_glsl_dir_str = exe_path + "/Assets/Shader/spv_glsl";
+    std::filesystem::path spv_glsl_dir = spv_glsl_dir_str;
+    if (!std::filesystem::exists(spv_glsl_dir)) {
+        try {
+            std::filesystem::create_directories(spv_glsl_dir);
+        } catch (const std::filesystem::filesystem_error& e) {
+            YERROR("Error: %s", e.what());
+        }
+    } else {
+        std::cout << "Directory already exists.\n";
+    }
+    g_spv_file_map.emplace(YeAssetsShader::Output_Vert, spv_glsl_dir_str + "/output.vert.spv");
+    g_spv_file_map.emplace(YeAssetsShader::Output_Frag, spv_glsl_dir_str + "/output.frag.spv");
+    g_spv_file_map.emplace(YeAssetsShader::Rasterization_Vert, spv_glsl_dir_str + "/rasterization.vert.spv");
+    g_spv_file_map.emplace(YeAssetsShader::Rasterization_Frag, spv_glsl_dir_str + "/rasterization.frag.spv");
+    g_spv_file_map.emplace(YeAssetsShader::Shadow_Map_Vert, spv_glsl_dir_str + "/shadow_map.vert.spv");
+    g_spv_file_map.emplace(YeAssetsShader::Shadow_Map_Frag, spv_glsl_dir_str + "/shadow_map.frag.spv");
+    g_spv_file_map.emplace(YeAssetsShader::Path_Tracing_Vert, spv_glsl_dir_str + "/path_tracing.vert.spv");
+    g_spv_file_map.emplace(YeAssetsShader::Path_Tracing_Frag, spv_glsl_dir_str + "/path_tracing.frag.spv");
 
     YShaderManager::instance();
 }

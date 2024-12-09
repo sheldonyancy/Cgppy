@@ -32,6 +32,8 @@
 #include "YCMemoryManager.h"
 #include "YGlobalFunction.h"
 
+#include "stb_image_write.h"
+
 
 static void bufferBind(YsVkContext* context,
                        YsVkBuffer* buffer,
@@ -111,7 +113,12 @@ static void bufferLoadData(YsVkContext* context,
                            u32 flags,
                            const void* data) {
     void* data_ptr;
-    VK_CHECK(vkMapMemory(context->device->logical_device, buffer->memory, offset, buffer->total_size, flags, &data_ptr));
+    VK_CHECK(vkMapMemory(context->device->logical_device, 
+                         buffer->memory, 
+                         offset, 
+                         buffer->total_size, 
+                         flags, 
+                         &data_ptr));
     yCMemoryCopy(data_ptr, data, buffer->total_size);
     vkUnmapMemory(context->device->logical_device, buffer->memory);
 }
@@ -162,10 +169,10 @@ static void bufferLoadDataRange(YsVkContext* context,
                  &staging);
 
     bufferLoadData(context,
-                      &staging,
-                      0,
-                      0,
-                      data);
+                   &staging,
+                   0,
+                   0,
+                   data);
 
     bufferCopyToBuffer(context,
                           command_unit,
@@ -334,82 +341,6 @@ static void transitionImageLayout(VkCommandBuffer command_buffer,
                          &barrier);
 }
 
-static void imageCopyFromBuffer(YsVkImage* image,
-                            VkBuffer buffer,
-                            u64 offset,
-                            VkCommandBuffer command_buffer) {
-    VkBufferImageCopy region;
-    yCMemoryZero(&region);
-    region.bufferOffset = offset;
-    region.bufferRowLength = 0;
-    region.bufferImageHeight = 0;
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.mipLevel = 0;
-    region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = image->create_info->arrayLayers;
-    region.imageOffset.x = 0;
-    region.imageOffset.y = 0;
-    region.imageOffset.z = 0;
-    region.imageExtent.width = image->create_info->extent.width;
-    region.imageExtent.height = image->create_info->extent.height;
-    region.imageExtent.depth = 1;
-
-    vkCmdCopyBufferToImage(command_buffer,
-                           buffer,
-                           image->handle,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           1,
-                           &region);
-}
-
-static void imageCopyToBuffer(YsVkImage* image,
-                          VkBuffer buffer,
-                          VkCommandBuffer command_buffer) {
-    VkBufferImageCopy region = {};
-    region.bufferOffset = 0;
-    region.bufferRowLength = 0;
-    region.bufferImageHeight = 0;
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    region.imageSubresource.mipLevel = 0;
-    region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = image->create_info->arrayLayers;
-    region.imageExtent.width = image->create_info->extent.width;
-    region.imageExtent.height = image->create_info->extent.height;
-    region.imageExtent.depth = 1;
-    vkCmdCopyImageToBuffer(command_buffer,
-                           image->handle,
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           buffer,
-                           1,
-                           &region);
-}
-
-static void imageCopyPixelToBuffer(YsVkImage* image,
-                               VkBuffer buffer,
-                               u32 x,
-                               u32 y,
-                               VkCommandBuffer command_buffer) {
-    VkBufferImageCopy region = {};
-    region.bufferOffset = 0;
-    region.bufferRowLength = 0;
-    region.bufferImageHeight = 0;
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.mipLevel = 0;
-    region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = image->create_info->arrayLayers;
-    region.imageOffset.x = x;
-    region.imageOffset.y = y;
-    region.imageExtent.width = 1;
-    region.imageExtent.height = 1;
-    region.imageExtent.depth = 1;
-    vkCmdCopyImageToBuffer(command_buffer,
-                           image->handle,
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           buffer,
-                           1,
-                           &region);
-}
-
 static void imageClear(YsVkContext* context,
                        YsVkCommandUnit* command_unit,
                        YsVkImage* image,
@@ -482,10 +413,27 @@ static void bufferCopyToImage(YsVkContext* context,
                           VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                           VK_PIPELINE_STAGE_TRANSFER_BIT);
 
-    imageCopyFromBuffer(image,
-                        buffer->handle,
-                        0,
-                        temp_command_buffer);
+    VkBufferImageCopy region;
+    yCMemoryZero(&region);
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = image->create_info->arrayLayers;
+    region.imageOffset.x = 0;
+    region.imageOffset.y = 0;
+    region.imageOffset.z = 0;
+    region.imageExtent.width = image->create_info->extent.width;
+    region.imageExtent.height = image->create_info->extent.height;
+    region.imageExtent.depth = 1;
+    vkCmdCopyBufferToImage(temp_command_buffer,
+                           buffer->handle,
+                           image->handle,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1,
+                           &region);
 
     transitionImageLayout(temp_command_buffer,
                           image,
@@ -503,6 +451,90 @@ static void bufferCopyToImage(YsVkContext* context,
     context->device->commandBufferEndSingleUse(context,
                                                command_unit,
                                                &temp_command_buffer);
+}
+
+static void saveImageToPng(YsVkContext* context,
+                           YsVkResources* resource,
+                           YsVkImage* image,
+                           YsVkCommandUnit* command_unit,
+                           const char* output_png_file) {
+    u32 pixel_count = image->create_info->extent.width * image->create_info->extent.height;                       
+    YsVkBuffer pixel_buffer;
+    bufferCreate(context,
+                 4 * pixel_count,
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 true,
+                 &pixel_buffer);
+
+    vkQueueWaitIdle(command_unit->queue);
+    VkCommandBuffer temp_command_buffer;
+    context->device->commandBufferAllocateAndBeginSingleUse(context,
+                                                            command_unit,
+                                                            &temp_command_buffer);
+
+    resource->transitionImageLayout(temp_command_buffer,
+                                    image,
+                                    0,
+                                    1,
+                                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                    VK_ACCESS_MEMORY_READ_BIT,
+                                    VK_ACCESS_TRANSFER_READ_BIT,
+                                    command_unit->queue_family_index,
+                                    command_unit->queue_family_index,
+                                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                    VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    VkBufferImageCopy region = {};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = image->create_info->arrayLayers;
+    region.imageExtent.width = image->create_info->extent.width;
+    region.imageExtent.height = image->create_info->extent.height;
+    region.imageExtent.depth = 1;
+    vkCmdCopyImageToBuffer(temp_command_buffer,
+                           image->handle,
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           pixel_buffer.handle,
+                           1,
+                           &region);
+
+    resource->transitionImageLayout(temp_command_buffer,
+                                    image,
+                                    0,
+                                    1,
+                                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                    VK_ACCESS_TRANSFER_READ_BIT,
+                                    VK_ACCESS_MEMORY_READ_BIT,
+                                    command_unit->queue_family_index,
+                                    command_unit->queue_family_index,
+                                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);                       
+
+    context->device->commandBufferEndSingleUse(context,
+                                               command_unit,
+                                               &temp_command_buffer);
+
+    void* data = NULL;
+    vkMapMemory(context->device->logical_device, 
+                pixel_buffer.memory, 
+                0, 
+                VK_WHOLE_SIZE, 
+                0, 
+                &data);
+    stbi_write_jpg(output_png_file, 
+                   image->create_info->extent.width, 
+                   image->create_info->extent.height, 
+                   4, 
+                   data, 
+                   image->create_info->extent.width * 4);
+    vkUnmapMemory(context->device->logical_device, pixel_buffer.memory);
 }
 
 static void initializeVertexInputDescription(YsVkContext* context,
@@ -532,90 +564,90 @@ static void initializeVertexInputDescription(YsVkContext* context,
     out_resources->vertex_material_id_attribute_description.offset = 0;
 }
 
-static void initializeGlobalUboDescription(YsVkContext* context,
-                                           YsVkResources* out_resources) {
-    out_resources->global_ubo_descriptor = yCMemoryAllocate(sizeof(YsVkDescription));
-    out_resources->global_ubo_descriptor->first_set = 0;
+static void initializeUboDescription(YsVkContext* context,
+                                     YsVkResources* out_resources) {
+    out_resources->ubo_descriptor = yCMemoryAllocate(sizeof(YsVkDescription));
+    out_resources->ubo_descriptor->first_set = 0;
 
-    VkDescriptorSetLayoutBinding global_ubo_layout_binding;
-    global_ubo_layout_binding.binding = 0;
-    global_ubo_layout_binding.descriptorCount = 1;
-    global_ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    global_ubo_layout_binding.pImmutableSamplers = NULL;
-    global_ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    VkDescriptorSetLayoutCreateInfo global_ubo_layout_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    global_ubo_layout_info.bindingCount = 1;
-    global_ubo_layout_info.pBindings = &global_ubo_layout_binding;
+    VkDescriptorSetLayoutBinding ubo_layout_binding;
+    ubo_layout_binding.binding = 0;
+    ubo_layout_binding.descriptorCount = 1;
+    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_layout_binding.pImmutableSamplers = NULL;
+    ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutCreateInfo ubo_layout_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    ubo_layout_info.bindingCount = 1;
+    ubo_layout_info.pBindings = &ubo_layout_binding;
     VK_CHECK(vkCreateDescriptorSetLayout(context->device->logical_device,
-                                         &global_ubo_layout_info,
+                                         &ubo_layout_info,
                                          context->allocator,
-                                         &out_resources->global_ubo_descriptor->descriptor_set_layout));
+                                         &out_resources->ubo_descriptor->descriptor_set_layout));
 
-    VkDescriptorPoolSize global_ubo_pool_size;
-    global_ubo_pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    global_ubo_pool_size.descriptorCount = context->swapchain->image_count;
-    VkDescriptorPoolCreateInfo global_ubo_pool_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    global_ubo_pool_info.poolSizeCount = 1;
-    global_ubo_pool_info.pPoolSizes = &global_ubo_pool_size;
-    global_ubo_pool_info.maxSets = context->swapchain->image_count;
+    VkDescriptorPoolSize ubo_pool_size;
+    ubo_pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_pool_size.descriptorCount = context->swapchain->image_count;
+    VkDescriptorPoolCreateInfo ubo_pool_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    ubo_pool_info.poolSizeCount = 1;
+    ubo_pool_info.pPoolSizes = &ubo_pool_size;
+    ubo_pool_info.maxSets = context->swapchain->image_count;
     VK_CHECK(vkCreateDescriptorPool(context->device->logical_device,
-                                    &global_ubo_pool_info,
+                                    &ubo_pool_info,
                                     context->allocator,
-                                    &out_resources->global_ubo_descriptor->descriptor_pool));
+                                    &out_resources->ubo_descriptor->descriptor_pool));
 
-    VkDescriptorSetLayout* global_ubo_layouts = yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * context->swapchain->image_count);
+    VkDescriptorSetLayout* ubo_layouts = yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * context->swapchain->image_count);
     for (int i = 0; i < context->swapchain->image_count; ++i) {
-        global_ubo_layouts[i] = out_resources->global_ubo_descriptor->descriptor_set_layout;
+        ubo_layouts[i] = out_resources->ubo_descriptor->descriptor_set_layout;
     }
-    VkDescriptorSetAllocateInfo global_ubo_alloc_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    global_ubo_alloc_info.descriptorPool = out_resources->global_ubo_descriptor->descriptor_pool;
-    global_ubo_alloc_info.descriptorSetCount = context->swapchain->image_count;
-    global_ubo_alloc_info.pSetLayouts = global_ubo_layouts;
-    out_resources->global_ubo_descriptor->descriptor_sets = yCMemoryAllocate(sizeof(VkDescriptorSet) * context->swapchain->image_count);
-    VK_CHECK(vkAllocateDescriptorSets(context->device->logical_device, &global_ubo_alloc_info, out_resources->global_ubo_descriptor->descriptor_sets));
+    VkDescriptorSetAllocateInfo ubo_alloc_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    ubo_alloc_info.descriptorPool = out_resources->ubo_descriptor->descriptor_pool;
+    ubo_alloc_info.descriptorSetCount = context->swapchain->image_count;
+    ubo_alloc_info.pSetLayouts = ubo_layouts;
+    out_resources->ubo_descriptor->descriptor_sets = yCMemoryAllocate(sizeof(VkDescriptorSet) * context->swapchain->image_count);
+    VK_CHECK(vkAllocateDescriptorSets(context->device->logical_device, &ubo_alloc_info, out_resources->ubo_descriptor->descriptor_sets));
 }
 
-static void initializeGlobalSceneBlockDescriptor(YsVkContext* context,
-                                                 YsVkResources* out_resources) {
-    out_resources->global_scene_block_descriptor = yCMemoryAllocate(sizeof(YsVkDescription));
-    out_resources->global_scene_block_descriptor->first_set = 1;
+static void initializeSsboDescriptor(YsVkContext* context,
+                                     YsVkResources* out_resources) {
+    out_resources->ssbo_descriptor = yCMemoryAllocate(sizeof(YsVkDescription));
+    out_resources->ssbo_descriptor->first_set = 1;
 
-    VkDescriptorSetLayoutBinding global_scene_block_layout_binding = {};
-    global_scene_block_layout_binding.binding = 0;
-    global_scene_block_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    global_scene_block_layout_binding.descriptorCount = 1;
-    global_scene_block_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    VkDescriptorSetLayoutCreateInfo global_scene_block_layout_info = {};
-    global_scene_block_layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    global_scene_block_layout_info.bindingCount = 1;
-    global_scene_block_layout_info.pBindings = &global_scene_block_layout_binding;
+    VkDescriptorSetLayoutBinding ssbo_layout_binding = {};
+    ssbo_layout_binding.binding = 0;
+    ssbo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ssbo_layout_binding.descriptorCount = 1;
+    ssbo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutCreateInfo ssbo_layout_info = {};
+    ssbo_layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    ssbo_layout_info.bindingCount = 1;
+    ssbo_layout_info.pBindings = &ssbo_layout_binding;
     vkCreateDescriptorSetLayout(context->device->logical_device,
-                                &global_scene_block_layout_info,
+                                &ssbo_layout_info,
                                 NULL,
-                                &out_resources->global_scene_block_descriptor->descriptor_set_layout);
+                                &out_resources->ssbo_descriptor->descriptor_set_layout);
 
-    VkDescriptorPoolSize global_scene_block_pool_size;
-    global_scene_block_pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    global_scene_block_pool_size.descriptorCount = context->swapchain->image_count;
-    VkDescriptorPoolCreateInfo global_scene_block_pool_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    global_scene_block_pool_info.poolSizeCount = 1;
-    global_scene_block_pool_info.pPoolSizes = &global_scene_block_pool_size;
-    global_scene_block_pool_info.maxSets = context->swapchain->image_count;
+    VkDescriptorPoolSize ssbo_pool_size;
+    ssbo_pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ssbo_pool_size.descriptorCount = context->swapchain->image_count;
+    VkDescriptorPoolCreateInfo ssbo_pool_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    ssbo_pool_info.poolSizeCount = 1;
+    ssbo_pool_info.pPoolSizes = &ssbo_pool_size;
+    ssbo_pool_info.maxSets = context->swapchain->image_count;
     VK_CHECK(vkCreateDescriptorPool(context->device->logical_device,
-                                    &global_scene_block_pool_info,
+                                    &ssbo_pool_info,
                                     context->allocator,
-                                    &out_resources->global_scene_block_descriptor->descriptor_pool));
+                                    &out_resources->ssbo_descriptor->descriptor_pool));
 
-    out_resources->global_scene_block_descriptor->descriptor_sets = yCMemoryAllocate(sizeof(VkDescriptorSet) * context->swapchain->image_count);
-    VkDescriptorSetLayout* global_scene_block_layouts = yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * context->swapchain->image_count);
+    out_resources->ssbo_descriptor->descriptor_sets = yCMemoryAllocate(sizeof(VkDescriptorSet) * context->swapchain->image_count);
+    VkDescriptorSetLayout* ssbo_layouts = yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * context->swapchain->image_count);
     for (int i = 0; i < context->swapchain->image_count; ++i) {
-        global_scene_block_layouts[i] = out_resources->global_scene_block_descriptor->descriptor_set_layout;
+        ssbo_layouts[i] = out_resources->ssbo_descriptor->descriptor_set_layout;
     }
-    VkDescriptorSetAllocateInfo global_scene_block_alloc_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    global_scene_block_alloc_info.descriptorPool = out_resources->global_scene_block_descriptor->descriptor_pool;
-    global_scene_block_alloc_info.descriptorSetCount = context->swapchain->image_count;
-    global_scene_block_alloc_info.pSetLayouts = global_scene_block_layouts;
-    VK_CHECK(vkAllocateDescriptorSets(context->device->logical_device, &global_scene_block_alloc_info, out_resources->global_scene_block_descriptor->descriptor_sets));
+    VkDescriptorSetAllocateInfo ssbo_alloc_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    ssbo_alloc_info.descriptorPool = out_resources->ssbo_descriptor->descriptor_pool;
+    ssbo_alloc_info.descriptorSetCount = context->swapchain->image_count;
+    ssbo_alloc_info.pSetLayouts = ssbo_layouts;
+    VK_CHECK(vkAllocateDescriptorSets(context->device->logical_device, &ssbo_alloc_info, out_resources->ssbo_descriptor->descriptor_sets));
 }
 
 static void initializeImageDescriptor(YsVkContext* context,
@@ -691,9 +723,9 @@ static void initializeImageDescriptor(YsVkContext* context,
                                       out_resources->image_descriptor->descriptor_sets));
 }
 
-void createVertexInputBuffer(YsVkContext* context,
-                             YsVkResources* resource,
-                             u32 vertex_count) {
+static void createVertexInputBuffer(YsVkContext* context,
+                                    YsVkResources* resource,
+                                    u32 vertex_count) {
     resource->current_draw_vertex_count = vertex_count;
 
     VkBufferUsageFlags flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
@@ -732,7 +764,7 @@ void createVertexInputBuffer(YsVkContext* context,
     }
 }
 
-void updateVertexInputBuffer(YsVkContext* context,
+static void updateVertexInputBuffer(YsVkContext* context,
                              YsVkResources* resource,
                              YsVkCommandUnit* command_unit,
                              void* vertex_position_data,
@@ -758,68 +790,66 @@ void updateVertexInputBuffer(YsVkContext* context,
                        vertex_material_id_data);
 }
 
-static void createGlobalUboBuffer(YsVkContext* context,
-                                  YsVkResources* resource) {
+static void createUboBuffer(YsVkContext* context,
+                            YsVkResources* resource) {
     VkBufferUsageFlagBits usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     VkBufferUsageFlags flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    resource->global_ubo_buffer = yCMemoryAllocate(sizeof(YsVkBuffer));
-    int size = sizeof(struct GLSL_GlobalUniformObject);
+    resource->ubo_buffer = yCMemoryAllocate(sizeof(YsVkBuffer));
     if (!bufferCreate(context,
-                      size,
+                      yUboSize(),
                       usage,
                       flags,
                       true,
-                      resource->global_ubo_buffer)) {
+                      resource->ubo_buffer)) {
         YERROR("Vulkan buffer creation failed for shader.");
     }
 }
 
-static void updateGlobalUboBuffer(struct YsVkContext* context,
-                                  struct YsVkResources* resource,
-                                  void* data) {
+static void updateUboBuffer(struct YsVkContext* context,
+                            struct YsVkResources* resource,
+                            void* data) {
     bufferLoadData(context,
-                   resource->global_ubo_buffer,
+                   resource->ubo_buffer,
                    0,
                    0,
                    data);
 }
 
-static void createGlobalSceneBlockBuffer(struct YsVkContext* context,
-                                         struct YsVkResources* resource,
-                                         u32 data_size) {
-    resource->global_scene_block_buffer = yCMemoryAllocate(sizeof(YsVkBuffer));
-    VkBufferUsageFlagBits bvh_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    VkBufferUsageFlags bvh_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+static void createSsboBuffer(YsVkContext* context,
+                             YsVkResources* resource,
+                             u32 data_size) {
+    resource->ssbo_buffer = yCMemoryAllocate(sizeof(YsVkBuffer));
+    VkBufferUsageFlagBits usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    VkBufferUsageFlags flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     if (bufferCreate(context,
                      data_size,
-                     bvh_usage,
-                     bvh_flags,
+                     usage,
+                     flags,
                      true,
-                     resource->global_scene_block_buffer)) {
+                     resource->ssbo_buffer)) {
 
     } else {
-        YERROR("Error creating global_scene_block_buffer.");
+        YERROR("Error creating ssbo buffer.");
     }
 }
 
-static void updateGlobalSceneBlockBuffer(struct YsVkContext* context,
-                                         struct YsVkResources* resource,
-                                         void* data) {
+static void updateSsboBuffer(YsVkContext* context,
+                             YsVkResources* resource,
+                             void* data) {
     bufferLoadData(context,
-                   resource->global_scene_block_buffer,
+                   resource->ssbo_buffer,
                    0,
                    0,
                    data);
 }
 
 static void createRasterizationImage(YsVkContext* context,
-                                     YsVkResources* resource,
-                                     vec2 resolution) {
+                                     YsVkResources* resource) {
     VkImageCreateInfo* color_image_create_info = yCMemoryAllocate(sizeof(VkImageCreateInfo));
     color_image_create_info->sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     color_image_create_info->imageType = VK_IMAGE_TYPE_2D;
-    color_image_create_info->extent.width = resolution[0];
-    color_image_create_info->extent.height = resolution[1];
+    color_image_create_info->extent.width = context->framebuffer_width;
+    color_image_create_info->extent.height = context->framebuffer_height;
     color_image_create_info->extent.depth = 1;
     color_image_create_info->mipLevels = 1;
     color_image_create_info->arrayLayers = context->swapchain->image_count;
@@ -844,8 +874,8 @@ static void createRasterizationImage(YsVkContext* context,
     VkImageCreateInfo* depth_image_create_info = yCMemoryAllocate(sizeof(VkImageCreateInfo));
     depth_image_create_info->sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     depth_image_create_info->imageType = VK_IMAGE_TYPE_2D;
-    depth_image_create_info->extent.width = resolution[0];
-    depth_image_create_info->extent.height = resolution[1];
+    depth_image_create_info->extent.width = context->framebuffer_width;
+    depth_image_create_info->extent.height = context->framebuffer_height;
     depth_image_create_info->extent.depth = 1;
     depth_image_create_info->mipLevels = 1;
     depth_image_create_info->arrayLayers = context->swapchain->image_count;
@@ -868,13 +898,12 @@ static void createRasterizationImage(YsVkContext* context,
 }
 
 static void createShadowMapImage(YsVkContext* context,
-                                 YsVkResources* resource,
-                                 vec2 resolution) {
+                                 YsVkResources* resource) {
     VkImageCreateInfo* shadow_map_image_create_info = yCMemoryAllocate(sizeof(VkImageCreateInfo));
     shadow_map_image_create_info->sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     shadow_map_image_create_info->imageType = VK_IMAGE_TYPE_2D;
-    shadow_map_image_create_info->extent.width = resolution[0];
-    shadow_map_image_create_info->extent.height = resolution[1];
+    shadow_map_image_create_info->extent.width = context->framebuffer_width;
+    shadow_map_image_create_info->extent.height = context->framebuffer_height;
     shadow_map_image_create_info->extent.depth = 1;
     shadow_map_image_create_info->mipLevels = 1;
     shadow_map_image_create_info->arrayLayers = 1;
@@ -896,14 +925,13 @@ static void createShadowMapImage(YsVkContext* context,
 }
 
 static void createPathTracingImage(YsVkContext* context,
-                                   YsVkResources* resource,
-                                   vec2 resolution) {
+                                   YsVkResources* resource) {
     //
     VkImageCreateInfo* path_tracing_random_image_create_info = yCMemoryAllocate(sizeof(VkImageCreateInfo));
     path_tracing_random_image_create_info->sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     path_tracing_random_image_create_info->imageType = VK_IMAGE_TYPE_2D;
-    path_tracing_random_image_create_info->extent.width = resolution[0];
-    path_tracing_random_image_create_info->extent.height = resolution[1];
+    path_tracing_random_image_create_info->extent.width = context->framebuffer_width;
+    path_tracing_random_image_create_info->extent.height = context->framebuffer_height;
     path_tracing_random_image_create_info->extent.depth = 1;
     path_tracing_random_image_create_info->mipLevels = 1;
     path_tracing_random_image_create_info->arrayLayers = context->swapchain->image_count;
@@ -929,8 +957,8 @@ static void createPathTracingImage(YsVkContext* context,
     VkImageCreateInfo* path_tracing_accumulate_image_create_info = yCMemoryAllocate(sizeof(VkImageCreateInfo));
     path_tracing_accumulate_image_create_info->sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     path_tracing_accumulate_image_create_info->imageType = VK_IMAGE_TYPE_2D;
-    path_tracing_accumulate_image_create_info->extent.width = resolution[0];
-    path_tracing_accumulate_image_create_info->extent.height = resolution[1];
+    path_tracing_accumulate_image_create_info->extent.width = context->framebuffer_width;
+    path_tracing_accumulate_image_create_info->extent.height = context->framebuffer_height;
     path_tracing_accumulate_image_create_info->extent.depth = 1;
     path_tracing_accumulate_image_create_info->mipLevels = 1;
     path_tracing_accumulate_image_create_info->arrayLayers = context->swapchain->image_count;
@@ -993,21 +1021,58 @@ static void createSampler(YsVkContext* context,
                              &resource->sampler_nearest));
 }
 
-static void updateDescriptorSets(YsVkContext* context,
+static void updateSsboDescriptorSets(YsVkContext* context,
+                                     YsVkResources* resource,
+                                     YsVkRenderingSystem* rendering_system,
+                                     u32 image_index) {
+    VkDescriptorBufferInfo ssbo_buffer_info;
+    ssbo_buffer_info.buffer = resource->ssbo_buffer->handle;
+    ssbo_buffer_info.offset = 0;
+    ssbo_buffer_info.range = resource->ssbo_buffer->total_size; 
+
+    VkWriteDescriptorSet write_descriptor_set = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    write_descriptor_set.dstSet = resource->ssbo_descriptor->descriptor_sets[image_index];
+    write_descriptor_set.dstBinding = 0;
+    write_descriptor_set.dstArrayElement = 0;
+    write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    write_descriptor_set.descriptorCount = 1;
+    write_descriptor_set.pBufferInfo = &ssbo_buffer_info;
+
+    vkUpdateDescriptorSets(context->device->logical_device,
+                           1,
+                           &write_descriptor_set,
+                           0,
+                           0);
+}
+
+static void updateUboDescriptorSets(YsVkContext* context,
+                                    YsVkResources* resource,
+                                    YsVkRenderingSystem* rendering_system,
+                                    u32 image_index) {
+    VkDescriptorBufferInfo ubo_buffer_info;
+    ubo_buffer_info.buffer = resource->ubo_buffer->handle;
+    ubo_buffer_info.offset = 0;
+    ubo_buffer_info.range = resource->ubo_buffer->total_size;   
+
+    VkWriteDescriptorSet write_descriptor_set = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    write_descriptor_set.dstSet = resource->ubo_descriptor->descriptor_sets[image_index];
+    write_descriptor_set.dstBinding = 0;
+    write_descriptor_set.dstArrayElement = 0;
+    write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    write_descriptor_set.descriptorCount = 1;
+    write_descriptor_set.pBufferInfo = &ubo_buffer_info;
+
+    vkUpdateDescriptorSets(context->device->logical_device,
+                           1,
+                           &write_descriptor_set,
+                           0,
+                           0);
+}
+
+static void updateImageDescriptorSets(YsVkContext* context,
                                  YsVkResources* resource,
                                  YsVkRenderingSystem* rendering_system,
                                  u32 image_index) {
-    //
-    VkDescriptorBufferInfo global_ubo_buffer_info;
-    global_ubo_buffer_info.buffer = resource->global_ubo_buffer->handle;
-    global_ubo_buffer_info.offset = 0;
-    global_ubo_buffer_info.range = resource->global_ubo_buffer->total_size;
-
-    VkDescriptorBufferInfo global_scene_block_buffer_info;
-    global_scene_block_buffer_info.buffer = resource->global_scene_block_buffer->handle;
-    global_scene_block_buffer_info.offset = 0;
-    global_scene_block_buffer_info.range = resource->global_scene_block_buffer->total_size;
-
     VkDescriptorImageInfo rasterization_texture_info;
     rasterization_texture_info.sampler = resource->sampler_linear;
     rasterization_texture_info.imageView = resource->rasterization_color_image.individual_views[image_index];
@@ -1033,58 +1098,45 @@ static void updateDescriptorSets(YsVkContext* context,
     all_accumulate_textures_info.imageView = resource->path_tracing_accumulate_image.common_view;
     all_accumulate_textures_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    VkWriteDescriptorSet write_descriptor_sets[7] = {{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET},
-                                                     {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET},
-                                                     {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET},
+    VkWriteDescriptorSet write_descriptor_sets[5] = {{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET},
                                                      {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET},
                                                      {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET},
                                                      {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET},
                                                      {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET}};
-    write_descriptor_sets[0].dstSet = resource->global_ubo_descriptor->descriptor_sets[image_index];
+    
+    write_descriptor_sets[0].dstSet = resource->image_descriptor->descriptor_sets[image_index];
     write_descriptor_sets[0].dstBinding = 0;
     write_descriptor_sets[0].dstArrayElement = 0;
-    write_descriptor_sets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    write_descriptor_sets[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     write_descriptor_sets[0].descriptorCount = 1;
-    write_descriptor_sets[0].pBufferInfo = &global_ubo_buffer_info;
-    write_descriptor_sets[1].dstSet = resource->global_scene_block_descriptor->descriptor_sets[image_index];
-    write_descriptor_sets[1].dstBinding = 0;
+    write_descriptor_sets[0].pImageInfo = &rasterization_texture_info;
+    write_descriptor_sets[1].dstSet = resource->image_descriptor->descriptor_sets[image_index];
+    write_descriptor_sets[1].dstBinding = 1;
     write_descriptor_sets[1].dstArrayElement = 0;
-    write_descriptor_sets[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    write_descriptor_sets[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     write_descriptor_sets[1].descriptorCount = 1;
-    write_descriptor_sets[1].pBufferInfo = &global_scene_block_buffer_info;
+    write_descriptor_sets[1].pImageInfo = &shadow_map_image_info;
     write_descriptor_sets[2].dstSet = resource->image_descriptor->descriptor_sets[image_index];
-    write_descriptor_sets[2].dstBinding = 0;
+    write_descriptor_sets[2].dstBinding = 2;
     write_descriptor_sets[2].dstArrayElement = 0;
     write_descriptor_sets[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     write_descriptor_sets[2].descriptorCount = 1;
-    write_descriptor_sets[2].pImageInfo = &rasterization_texture_info;
+    write_descriptor_sets[2].pImageInfo = &path_tracing_random_texture_info;
     write_descriptor_sets[3].dstSet = resource->image_descriptor->descriptor_sets[image_index];
-    write_descriptor_sets[3].dstBinding = 1;
+    write_descriptor_sets[3].dstBinding = 3;
     write_descriptor_sets[3].dstArrayElement = 0;
     write_descriptor_sets[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     write_descriptor_sets[3].descriptorCount = 1;
-    write_descriptor_sets[3].pImageInfo = &shadow_map_image_info;
+    write_descriptor_sets[3].pImageInfo = &target_accumulate_texture_info;
     write_descriptor_sets[4].dstSet = resource->image_descriptor->descriptor_sets[image_index];
-    write_descriptor_sets[4].dstBinding = 2;
+    write_descriptor_sets[4].dstBinding = 4;
     write_descriptor_sets[4].dstArrayElement = 0;
     write_descriptor_sets[4].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     write_descriptor_sets[4].descriptorCount = 1;
-    write_descriptor_sets[4].pImageInfo = &path_tracing_random_texture_info;
-    write_descriptor_sets[5].dstSet = resource->image_descriptor->descriptor_sets[image_index];
-    write_descriptor_sets[5].dstBinding = 3;
-    write_descriptor_sets[5].dstArrayElement = 0;
-    write_descriptor_sets[5].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    write_descriptor_sets[5].descriptorCount = 1;
-    write_descriptor_sets[5].pImageInfo = &target_accumulate_texture_info;
-    write_descriptor_sets[6].dstSet = resource->image_descriptor->descriptor_sets[image_index];
-    write_descriptor_sets[6].dstBinding = 4;
-    write_descriptor_sets[6].dstArrayElement = 0;
-    write_descriptor_sets[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    write_descriptor_sets[6].descriptorCount = 1;
-    write_descriptor_sets[6].pImageInfo = &all_accumulate_textures_info;
+    write_descriptor_sets[4].pImageInfo = &all_accumulate_textures_info;
 
     vkUpdateDescriptorSets(context->device->logical_device,
-                           7,
+                           5,
                            write_descriptor_sets,
                            0,
                            0);
@@ -1095,18 +1147,7 @@ static void createPushConstants(YsVkResources* resource) {
     resource->push_constant_range = yCMemoryAllocate(sizeof(VkPushConstantRange));
     resource->push_constant_range[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     resource->push_constant_range[0].offset = 0;
-    resource->push_constant_range[0].size = sizeof(struct GLSL_PushConstantsObject);
-}
-
-static void cmdPushConstants(VkCommandBuffer command_buffer,
-                             YsVkPipeline* pipeline,
-                             void* data) {
-    vkCmdPushConstants(command_buffer,
-                       pipeline->pipeline_layout,
-                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                       0,
-                       sizeof(struct GLSL_PushConstantsObject),
-                       data);
+    resource->push_constant_range[0].size = yPushConstantSize();
 }
 
 static void updateRandomImage(YsVkContext* context,
@@ -1119,12 +1160,10 @@ static void updateRandomImage(YsVkContext* context,
     yGenerateUintRand(pixel_count, rand_data);
 
     YsVkBuffer random_buffer;
-    VkBufferUsageFlagBits random_usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    VkBufferUsageFlags random_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     if (bufferCreate(context,
                      sizeof(u32) * pixel_count,
-                     random_usage,
-                     random_flags,
+                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                      true,
                      &random_buffer)){
         bufferLoadDataRange(context,
@@ -1134,7 +1173,7 @@ static void updateRandomImage(YsVkContext* context,
                             0,
                             rand_data);
     } else {
-        YERROR("Error creating vertex buffer.");
+        YERROR("Error creating buffer.");
     }
 
     bufferCopyToImage(context,
@@ -1147,25 +1186,18 @@ static void updateRandomImage(YsVkContext* context,
 }
 
 static void initialize(YsVkContext* context,
-                       YsVkResources* resource,
-                       vec2 shadow_map_image_resolution,
-                       vec2 path_tracing_image_resolution) {
+                       YsVkResources* resource) {
     initializeVertexInputDescription(context, resource);
 
-    initializeGlobalUboDescription(context, resource);
-    initializeGlobalSceneBlockDescriptor(context, resource);
+    initializeUboDescription(context, resource);
+    initializeSsboDescriptor(context, resource);
     initializeImageDescriptor(context, resource);
 
-    createGlobalUboBuffer(context, resource);
+    createUboBuffer(context, resource);
 
-    vec2 rasterization_image_resolution;
-    rasterization_image_resolution[0] = context->framebuffer_width;
-    rasterization_image_resolution[1] = context->framebuffer_height;
-    createRasterizationImage(context, resource, rasterization_image_resolution);
-
-    createShadowMapImage(context, resource, shadow_map_image_resolution);
-
-    createPathTracingImage(context, resource, path_tracing_image_resolution);
+    createRasterizationImage(context, resource);
+    createShadowMapImage(context, resource);
+    createPathTracingImage(context, resource);
 
     createSampler(context, resource);
 
@@ -1184,18 +1216,17 @@ YsVkResources* yVkAllocateResourcesObject() {
         vk_resources->bufferCopyToImage = bufferCopyToImage;
         vk_resources->imageCreate = imageCreate;
         vk_resources->transitionImageLayout = transitionImageLayout;
-        vk_resources->imageCopyFromBuffer = imageCopyFromBuffer;
-        vk_resources->imageCopyToBuffer = imageCopyToBuffer;
-        vk_resources->imageCopyPixelToBuffer = imageCopyPixelToBuffer;
         vk_resources->imageClear = imageClear;
         vk_resources->imageDestroy = imageDestroy;
+        vk_resources->saveImageToPng = saveImageToPng;
         vk_resources->createVertexInputBuffer = createVertexInputBuffer;
         vk_resources->updateVertexInputBuffer = updateVertexInputBuffer;
-        vk_resources->updateGlobalUboBuffer = updateGlobalUboBuffer;
-        vk_resources->createGlobalSceneBlockBuffer = createGlobalSceneBlockBuffer;
-        vk_resources->updateGlobalSceneBlockBuffer = updateGlobalSceneBlockBuffer;
-        vk_resources->updateDescriptorSets = updateDescriptorSets;
-        vk_resources->cmdPushConstants = cmdPushConstants;
+        vk_resources->updateUboBuffer = updateUboBuffer;
+        vk_resources->createSsboBuffer = createSsboBuffer;
+        vk_resources->updateSsboBuffer = updateSsboBuffer;
+        vk_resources->updateSsboDescriptorSets = updateSsboDescriptorSets;
+        vk_resources->updateUboDescriptorSets = updateUboDescriptorSets;
+        vk_resources->updateImageDescriptorSets = updateImageDescriptorSets;
         vk_resources->updateRandomImage = updateRandomImage;
     }
     return vk_resources;

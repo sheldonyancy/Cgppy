@@ -28,6 +28,9 @@
 #include "YLogger.h"
 #include "YCMemoryManager.h"
 
+#include <unistd.h>
+#include <stdio.h>
+
 
 static b8 create(YsVkContext* context,
                  YsVkRenderStageCreateInfo* create_info,
@@ -65,8 +68,9 @@ static b8 create(YsVkContext* context,
     render_stage->framebuffers = yCMemoryAllocate(sizeof(VkFramebuffer) * create_info->framebuffer_count);
     for(u32 i = 0; i < create_info->framebuffer_count; ++i) {
         create_info->framebuffer_create_info[i].renderPass = render_stage->render_pass_handle;
+        VkFramebufferCreateInfo fb_create_info = create_info->framebuffer_create_info[i];
         VK_CHECK(vkCreateFramebuffer(context->device->logical_device,
-                                     &create_info->framebuffer_create_info[i],
+                                     &fb_create_info,
                                      context->allocator,
                                      &render_stage->framebuffers[i]));
     }
@@ -81,33 +85,11 @@ static void destroy(YsVkContext* context, YsVkRenderStage* render_stage) {
     }
 }
 
-static void renderPassBegin(VkCommandBuffer command_buffer,
-                            VkFramebuffer* framebuffer,
-                            VkRect2D render_area,
-                            u32 clear_value_count,
-                            VkClearValue* clear_values,
-                            YsVkRenderStage* render_stage) {
-    VkRenderPassBeginInfo begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    begin_info.renderPass = render_stage->render_pass_handle;
-    begin_info.framebuffer = *framebuffer;
-    begin_info.renderArea = render_area;
-    begin_info.clearValueCount = clear_value_count;
-    begin_info.pClearValues = clear_values;
-
-    vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-}
-
-static void renderPassEnd(VkCommandBuffer command_buffer) {
-    vkCmdEndRenderPass(command_buffer);
-}
-
 YsVkRenderStage* yVkAllocateRenderStageObject() {
     YsVkRenderStage* render_stage = yCMemoryAllocate(sizeof(YsVkRenderStage));
     if(render_stage) {
         render_stage->create = create;
         render_stage->destroy = destroy;
-        render_stage->renderPassBegin = renderPassBegin;
-        render_stage->renderPassEnd = renderPassEnd;
     }
 
     return render_stage;

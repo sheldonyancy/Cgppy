@@ -63,15 +63,6 @@ typedef struct YsVkRenderStage {
 
     void (*destroy)(struct YsVkContext* context, struct YsVkRenderStage* render_stage);
 
-    void (*renderPassBegin)(VkCommandBuffer command_buffer,
-                            VkFramebuffer* framebuffer,
-                            VkRect2D render_area,
-                            u32 clear_value_count,
-                            VkClearValue* clear_values,
-                            struct YsVkRenderStage* render_stage);
-
-    void (*renderPassEnd)(VkCommandBuffer command_buffer);
-
     YsVkRenderStageCreateInfo* create_info;
 
     VkRenderPass render_pass_handle;

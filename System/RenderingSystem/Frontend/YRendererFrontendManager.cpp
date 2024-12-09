@@ -30,6 +30,10 @@
 #include "GLFW/glfw3.h"
 #include "YLogger.h"
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
+
 
 YRendererFrontendManager* YRendererFrontendManager::instance() {
     static YRendererFrontendManager camera_manager;
@@ -57,7 +61,7 @@ void YRendererFrontendManager::initFrontend() {
     const GLFWvidmode* mode = glfwGetVideoMode(primary_monitor);
     if (mode) {
         YINFO("Current screen resolution: %ix%i", mode->width, mode->height);
-        YGlobalInterface::instance()->setMainWindowSize(glm::ivec2(mode->width, mode->height * 0.8f));
+        YGlobalInterface::instance()->setMainWindowSize(glm::ivec2(mode->width, mode->height));
     } else {
         YERROR("Failed to get video mode for primary monitor");
     }

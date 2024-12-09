@@ -91,8 +91,9 @@ static void create(YsVkContext* context,
     swapchain_create_info.imageArrayLayers = 1;
     swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    swapchain_create_info.queueFamilyIndexCount = 0;
-    swapchain_create_info.pQueueFamilyIndices = 0;
+    uint32_t queue_family_indices[4] = {0, 1, 2, 3};
+    swapchain_create_info.queueFamilyIndexCount = 4;
+    swapchain_create_info.pQueueFamilyIndices = queue_family_indices;
     swapchain_create_info.preTransform = context->device->swapchain_support.capabilities.currentTransform;
     swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     swapchain_create_info.presentMode = present_mode;
@@ -117,8 +118,10 @@ static void create(YsVkContext* context,
 
     for (u32 i = 0; i < swapchain->image_count; ++i) {
         //
-        swapchain->present_src_images[i].create_info = yCMemoryAllocate(sizeof(VkImageCreateInfo));
         swapchain->present_src_images[i].handle = swapchain_images[i];
+        swapchain->present_src_images[i].create_info = yCMemoryAllocate(sizeof(VkImageCreateInfo));
+        swapchain->present_src_images[i].create_info->format = swapchain->image_format.format;
+        swapchain->present_src_images[i].create_info->arrayLayers = 1;
         swapchain->present_src_images[i].create_info->extent.width = swapchain_extent.width;
         swapchain->present_src_images[i].create_info->extent.height = swapchain_extent.height;
 

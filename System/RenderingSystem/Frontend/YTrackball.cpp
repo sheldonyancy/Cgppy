@@ -53,8 +53,8 @@ glm::fvec3 YTrackball::mapToSphere(int x, int y) {
     float length2 = point.x * point.x + point.y * point.y;
 
     if (length2 > 1.0f) {
-        return glm::vec3(point, 0.0f);  // Project the point onto the sphere
+        return glm::vec3(point, 0.0f);
     } else {
-        return glm::vec3(point, sqrt(1.0f - length2));  // Point is on the sphere
+        return glm::vec3(point, sqrt(1.0f - length2));
     }
 }

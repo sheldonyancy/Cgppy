@@ -24,6 +24,7 @@
 
 #include "YDeveloperConsole.hpp"
 #include "YLogger.h"
+#include "YProfiler.hpp"
 #include "YGlobalInterface.hpp"
 #include "YVulkanContext.h"
 #include "YVulkanResource.h"
@@ -35,7 +36,6 @@
 #include "YCMemoryManager.h"
 #include "imgui_impl_glfw.h"
 #include "glfw/glfw3.h"
-#include "YEventHandlerManager.hpp"
 #include "YRendererBackendManager.hpp"
 #include "YRendererFrontendManager.hpp"
 #include "YGlfwWindow.hpp"
@@ -160,7 +160,10 @@ void YDeveloperConsole::addLogMessage(int log_level, const std::string& message)
     this->m_log_message.push_back(m);
 }
 
-void YDeveloperConsole::cmdDraw(unsigned int current_frame, unsigned int image_index) {
+void YDeveloperConsole::cmdDraw(YsVkCommandUnit* command_unit,
+                                u32 command_buffer_index,
+                                u32 current_frame, 
+                                u32 image_index) {
     glm::fvec2 window_size = YGlobalInterface::instance()->getMainWindowSize();
     static double last_time = glfwGetTime();
 
@@ -182,46 +185,34 @@ void YDeveloperConsole::cmdDraw(unsigned int current_frame, unsigned int image_i
 
     ImGui::Begin("Performance Monitor");
     {
-        double current_time = glfwGetTime();
-        ++this->m_render_frame_count;
-        if(current_time - last_time >= 1.0) {
-            this->m_render_fps = this->m_render_frame_count;
-            this->m_render_frame_count = 0;
-            last_time = current_time;
-        }
-
-        if(this->m_gpu_frame_time_accumulator >= 1000.0) {
-            this->m_gpu_fps = this->m_gpu_frame_count;
-            this->m_gpu_frame_time_accumulator = 0;
-            this->m_gpu_frame_count = 0;
-        }
-
         ImVec4 yellow = ImVec4(1.0f, 1.0f, 0.0f, 1.0f);
-        ImGui::Text("Render FPS: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%i", this->m_render_fps);ImGui::PopStyleColor();
-        ImGui::Text("GPU FPS: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%i", this->m_gpu_fps);ImGui::PopStyleColor();
-        ImGui::Text("CPU FPS: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("unknown");ImGui::PopStyleColor();
-        ImGui::Text("Render Frame Time(ms): ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%f", 1000.0f / this->m_render_fps);ImGui::PopStyleColor();
-        ImGui::Text("GPU Frame Time(ms): ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%f", 1000.0f / this->m_gpu_fps);ImGui::PopStyleColor();
-        ImGui::Text("CPU Frame Time(ms): ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("unknown");ImGui::PopStyleColor();
-        ImGui::Text("Samples: %llu", YRendererBackendManager::instance()->samples());
+        std::string str_render_res = std::to_string(this->m_vk_context->framebuffer_width) + " x " + std::to_string(this->m_vk_context->framebuffer_height);
+        ImGui::Text("Render Resolution: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text(str_render_res.c_str());ImGui::PopStyleColor();
+        ImGui::Text("Render FPS: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%i", YProfiler::instance()->renderingFPS());ImGui::PopStyleColor();
+        ImGui::Text("CPU FPS: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%i", YProfiler::instance()->cpuFPS());ImGui::PopStyleColor();
+        ImGui::Text("GPU FPS: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%i", YProfiler::instance()->gpuFPS());ImGui::PopStyleColor();
+        ImGui::Text("Render Frame Time(ms): ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%f", 1000.0f / YProfiler::instance()->renderingFPS());ImGui::PopStyleColor();
+        ImGui::Text("CPU Frame Time(ms): ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%f", 1000.0f / YProfiler::instance()->cpuFPS());ImGui::PopStyleColor();
+        ImGui::Text("GPU Frame Time(ms): ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%f", 1000.0f / YProfiler::instance()->gpuFPS());ImGui::PopStyleColor();
+        ImGui::Text("Samples: %u", YRendererBackendManager::instance()->samples());
     }
     ImGui::End();
 
     ImGui::Begin("Intermediate Image", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     {
-        ImGui::Image(this->m_shadow_mapping_descriptor_set,
-                     ImVec2(this->m_vk_resource->shadow_map_image.create_info->extent.width * 0.2f,
-                            this->m_vk_resource->shadow_map_image.create_info->extent.height * 0.2f));
+        ImGui::Image(u64(this->m_shadow_mapping_descriptor_set),
+                     ImVec2(this->m_vk_resource->shadow_map_image.create_info->extent.width * 0.05f,
+                            this->m_vk_resource->shadow_map_image.create_info->extent.height * 0.05f));
         ImGui::Text("Shadow Map Image");
         ImGui::Dummy(ImVec2(0.0f, 20.0f));
-        ImGui::Image(this->m_rasterization_image_descriptor_sets[image_index],
-                     ImVec2(this->m_vk_resource->rasterization_color_image.create_info->extent.width * 0.1f,
-                            this->m_vk_resource->rasterization_color_image.create_info->extent.height * 0.1f));
+        ImGui::Image(u64(this->m_rasterization_image_descriptor_sets[image_index]),
+                     ImVec2(this->m_vk_resource->rasterization_color_image.create_info->extent.width * 0.05f,
+                            this->m_vk_resource->rasterization_color_image.create_info->extent.height * 0.05f));
         ImGui::Text("Rasterization Image");
         ImGui::Dummy(ImVec2(0.0f, 20.0f));
-        ImGui::Image(this->m_accumulate_image_descriptor_sets[image_index],
-                     ImVec2(this->m_vk_resource->path_tracing_accumulate_image.create_info->extent.width * 0.2f,
-                            this->m_vk_resource->path_tracing_accumulate_image.create_info->extent.height * 0.2f));
+        ImGui::Image(u64(this->m_accumulate_image_descriptor_sets[image_index]),
+                     ImVec2(this->m_vk_resource->path_tracing_accumulate_image.create_info->extent.width * 0.05f,
+                            this->m_vk_resource->path_tracing_accumulate_image.create_info->extent.height * 0.05f));
         ImGui::Text("Path Tracing Accumulate Image");
     }
     ImGui::End();
@@ -253,7 +244,10 @@ void YDeveloperConsole::cmdDraw(unsigned int current_frame, unsigned int image_i
                     break;
                 }
             }
-            YEventHandlerManager::instance()->pushEvent(changing_rendering_model_event);
+            if(this->m_current_rendering_model_type != changing_rendering_model_event.type) {
+                this->m_current_rendering_model_type = changing_rendering_model_event.type;
+                YEventHandlerManager::instance()->pushEvent(changing_rendering_model_event);
+            }
         }
 
         ImGui::SetNextItemWidth(150.0f);
@@ -268,9 +262,7 @@ void YDeveloperConsole::cmdDraw(unsigned int current_frame, unsigned int image_i
     ImGui::Render();
     ImDrawData* draw_data = ImGui::GetDrawData();
 
-    YsVkCommandUnit* result_command_unit = this->m_vk_context->device->commandUnitsAt(this->m_vk_context->device, current_frame);
-    VkCommandBuffer result_command_buffer = result_command_unit->command_buffers[1];
-    ImGui_ImplVulkan_RenderDrawData(draw_data, result_command_buffer);
+    ImGui_ImplVulkan_RenderDrawData(draw_data, command_unit->command_buffers[command_buffer_index]);
 }
 
 void YDeveloperConsole::drawLog() const {

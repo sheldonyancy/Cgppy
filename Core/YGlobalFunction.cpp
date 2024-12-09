@@ -23,6 +23,7 @@
  */
 
 #include "YGlobalFunction.h"
+#include "YGLSLStructs.hpp"
 
 #include <random>
 #include <algorithm>
@@ -39,4 +40,19 @@ void yGenerateUintRand(u32 count, u32* data) {
     for(u32 i = 0; i < count; ++i) {
         data[i] = dis(gen);
     }
+}
+
+u32 ySsboSize() {
+    u32 size = sizeof(GLSL_SSBO);
+    return size;
+}
+
+u32 yUboSize() {
+    u32 size = sizeof(GLSL_UBO);
+    return size;
+}
+
+u32 yPushConstantSize() {
+    u32 size = sizeof(GLSL_PushConstantObject);
+    return size;
 }

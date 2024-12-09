@@ -28,7 +28,7 @@
 
 #include "define.glsl"
 #include "struct.glsl"
-#include "global_ubo.glsl"
+#include "uniform_buffer_object.glsl"
 
 layout(set = 2, binding = 1) uniform sampler2D shadow_mapping;
 
@@ -46,8 +46,8 @@ vec4 illuminationBlinnPhong() {
 
     if(0.0 != in_dto.color.w) {
         vec3 light_color = vec3(1.0);
-        vec3 light_dir = normalize(global_ubo.object.light.center - in_dto.position);
-        vec3 view_dir = normalize(global_ubo.object.rasterization_camera.position.xyz - in_dto.position);
+        vec3 light_dir = normalize(ubo.light.center - in_dto.position);
+        vec3 view_dir = normalize(ubo.rasterization_camera.position.xyz - in_dto.position);
 
         vec3 material_diffuse_color = in_dto.color.xyz;
 

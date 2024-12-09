@@ -32,7 +32,18 @@
 #include "YLogger.h"
 #include "YCMemoryManager.h"
 #include "YAssets.h"
+#include "YGlobalFunction.h"
 
+static float computeScale(const float* image_size, const float* window_size) {
+    float image_aspect_ratio = image_size[0] / image_size[1];
+    float window_aspect_ratio = window_size[0] / window_size[1];
+
+    if(window_aspect_ratio > image_aspect_ratio) {
+        return window_size[1] / image_size[1];
+    } else {
+        return window_size[0] / image_size[0];
+    }
+}
 
 static b8 initialize(YsVkContext* context,
                                  YsVkResources* resources,
@@ -63,7 +74,7 @@ static b8 initialize(YsVkContext* context,
     for(int i = 0; i < render_stage_create_info->framebuffer_count; ++i) {
         render_stage_create_info->framebuffer_create_info[i].sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         render_stage_create_info->framebuffer_create_info[i].attachmentCount = render_stage_create_info->attachment_count;
-        render_stage_create_info->framebuffer_create_info[i].pAttachments = &context->swapchain->present_src_images->individual_views[i];
+        render_stage_create_info->framebuffer_create_info[i].pAttachments = &context->swapchain->present_src_images[i].individual_views[0];
         render_stage_create_info->framebuffer_create_info[i].width = context->swapchain->present_src_images->create_info->extent.width;
         render_stage_create_info->framebuffer_create_info[i].height = context->swapchain->present_src_images->create_info->extent.height;
         render_stage_create_info->framebuffer_create_info[i].layers = 1;
@@ -117,8 +128,8 @@ static b8 initialize(YsVkContext* context,
     output_pipeline_config->vertex_input_info = &pipeline_vertex_info;
     output_pipeline_config->descriptor_set_layout_count = 3;
     output_pipeline_config->descriptor_set_layouts = (VkDescriptorSetLayout*)yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * output_pipeline_config->descriptor_set_layout_count);
-    output_pipeline_config->descriptor_set_layouts[0] = resources->global_ubo_descriptor->descriptor_set_layout;
-    output_pipeline_config->descriptor_set_layouts[1] = resources->global_scene_block_descriptor->descriptor_set_layout;
+    output_pipeline_config->descriptor_set_layouts[0] = resources->ubo_descriptor->descriptor_set_layout;
+    output_pipeline_config->descriptor_set_layouts[1] = resources->ssbo_descriptor->descriptor_set_layout;
     output_pipeline_config->descriptor_set_layouts[2] = resources->image_descriptor->descriptor_set_layout;
     output_pipeline_config->push_constant_range_count = resources->push_constant_range_count;
     output_pipeline_config->push_constant_range = resources->push_constant_range;
@@ -157,6 +168,25 @@ static b8 initialize(YsVkContext* context,
                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                 true,
                                 output_system->vertex_input_position_buffer)){
+        vec2 window_size = {context->framebuffer_width, context->framebuffer_height};
+        vec2 image_size = {context->framebuffer_width, context->framebuffer_height};
+
+        float scale = computeScale(image_size, window_size);
+        image_size[0] *= scale;
+        image_size[1] *= scale;
+        float x = image_size[0] / window_size[0];
+        float y = image_size[1] / window_size[1];
+        f32 position[4*4] = {-x, y, 0.0f, 1.0f,
+                              x,  y, 0.0f, 1.0f,
+                              x, -y, 0.0f, 1.0f,
+                              -x, -y, 0.0f, 1.0f};
+        resources->bufferLoadDataRange(context,
+                                       context->device->commandUnitsFront(context->device),
+                                       0,
+                                       output_system->vertex_input_position_buffer,
+                                       0,
+                                       position);                                
+
     } else {
         YERROR("Error creating vertex buffer.");
     }
@@ -204,60 +234,15 @@ static b8 initialize(YsVkContext* context,
     return true;
 }
 
-static float computeScale(const float* image_size, const float* window_size) {
-    float image_aspect_ratio = image_size[0] / image_size[1];
-    float window_aspect_ratio = window_size[0] / window_size[1];
-
-    if(window_aspect_ratio > image_aspect_ratio) {
-        return window_size[1] / image_size[1];
-    } else {
-        return window_size[0] / image_size[0];
-    }
-}
-
-static void updateVertex(YsVkContext* context,
-                         YsVkResources* resources,
-                         YsVkOutputSystem* output_system,
-                         u32 rendering_model_type) {
-    vec2 window_size = {context->framebuffer_width, context->framebuffer_height};
-    vec2 image_size;
-    switch(rendering_model_type) {
-        case 0: {
-            image_size[0] = resources->path_tracing_accumulate_image.create_info->extent.width;
-            image_size[1] = resources->path_tracing_accumulate_image.create_info->extent.height;
-            break;
-        }
-        case 1: {
-            image_size[0] = resources->rasterization_color_image.create_info->extent.width;
-            image_size[1] =  resources->rasterization_color_image.create_info->extent.height;
-            break;
-        }
-    }
-    float scale = computeScale(image_size, window_size);
-    image_size[0] *= scale;
-    image_size[1] *= scale;
-    float x = image_size[0] / window_size[0];
-    float y = image_size[1] / window_size[1];
-    f32 position[4*4] =  {-x, y, 0.0f, 1.0f,
-                          x,  y, 0.0f, 1.0f,
-                          x, -y, 0.0f, 1.0f,
-                          -x, -y, 0.0f, 1.0f};
-
-    resources->bufferLoadDataRange(context,
-                                   context->device->commandUnitsFront(context->device),
-                                   0,
-                                   output_system->vertex_input_position_buffer,
-                                   0,
-                                   position);
-}
-
-static void rendering(YsVkContext* context,
-                      YsVkCommandUnit* command_unit,
-                      YsVkResources* resources,
-                      u32 image_index,
-                      u32 current_frame,
-                      YsVkOutputSystem* output_system) {
-    resources->transitionImageLayout(command_unit->command_buffers[1],
+static void cmdDrawCall(YsVkContext* context,
+                        YsVkCommandUnit* command_unit,
+                        u32 command_buffer_index,
+                        YsVkResources* resources,
+                        u32 image_index,
+                        u32 current_frame,
+                        void* push_constant_data,
+                        YsVkOutputSystem* output_system) {
+    resources->transitionImageLayout(command_unit->command_buffers[command_buffer_index],
                                      &resources->path_tracing_accumulate_image,
                                      0,
                                      context->swapchain->image_count,
@@ -291,58 +276,75 @@ static void rendering(YsVkContext* context,
     clear_value.color.float32[2] = 0.0f;
     clear_value.color.float32[3] = 1.0f;
 
-    vkCmdSetViewport(command_unit->command_buffers[1], 0, 1, &viewport);
-    vkCmdSetScissor(command_unit->command_buffers[1], 0, 1, &scissor);
+    vkCmdSetViewport(command_unit->command_buffers[command_buffer_index], 0, 1, &viewport);
+    vkCmdSetScissor(command_unit->command_buffers[command_buffer_index], 0, 1, &scissor);
 
-    output_system->render_stage->renderPassBegin(command_unit->command_buffers[1],
-                                                 &output_system->render_stage->framebuffers[current_frame],
-                                                 scissor,
-                                                 output_system->render_stage->create_info->attachment_count,
-                                                 &clear_value,
-                                                 output_system->render_stage);
+    VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    render_pass_begin_info.renderPass = output_system->render_stage->render_pass_handle;
+    render_pass_begin_info.framebuffer = output_system->render_stage->framebuffers[current_frame];
+    render_pass_begin_info.renderArea = scissor;
+    render_pass_begin_info.clearValueCount = output_system->render_stage->create_info->attachment_count;
+    render_pass_begin_info.pClearValues = &clear_value;
+    vkCmdBeginRenderPass(command_unit->command_buffers[command_buffer_index], 
+                         &render_pass_begin_info,
+                         VK_SUBPASS_CONTENTS_INLINE);                                             
 
-    output_system->pipeline->bind(command_unit->command_buffers[1], output_system->pipeline);
+    vkCmdBindPipeline(command_unit->command_buffers[command_buffer_index],
+                      VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      output_system->pipeline->handle);
 
     VkBuffer vertex_buffers[2] = {output_system->vertex_input_position_buffer->handle,
                                   output_system->vertex_input_texcoord_buffer->handle};
     VkDeviceSize vertex_offsets[2] = {0};
-    vkCmdBindVertexBuffers(command_unit->command_buffers[1],
+    vkCmdBindVertexBuffers(command_unit->command_buffers[command_buffer_index],
                            0,
                            2,
                            vertex_buffers,
                            vertex_offsets);
-    vkCmdBindIndexBuffer(command_unit->command_buffers[1],
+    vkCmdBindIndexBuffer(command_unit->command_buffers[command_buffer_index],
                          output_system->vertex_input_index_buffer->handle,
                          0,
                          VK_INDEX_TYPE_UINT32);
 
-    VkDescriptorSet descriptor_sets[3] = {resources->global_ubo_descriptor->descriptor_sets[image_index],
-                                          resources->global_scene_block_descriptor->descriptor_sets[image_index],
+    VkDescriptorSet descriptor_sets[3] = {resources->ubo_descriptor->descriptor_sets[image_index],
+                                          resources->ssbo_descriptor->descriptor_sets[image_index],
                                           resources->image_descriptor->descriptor_sets[image_index]};
-    output_system->pipeline->bindDescriptorSets(command_unit->command_buffers[1],
-                                                resources->global_ubo_descriptor->first_set,
-                                                3,
-                                                descriptor_sets,
-                                                output_system->pipeline);
+    vkCmdBindDescriptorSets(command_unit->command_buffers[command_buffer_index],
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            output_system->pipeline->pipeline_layout,
+                            resources->ubo_descriptor->first_set,
+                            3,
+                            descriptor_sets,
+                            0,
+                            NULL);                                            
 
-    vkCmdDrawIndexed(command_unit->command_buffers[1],
+    vkCmdPushConstants(command_unit->command_buffers[command_buffer_index],
+                       output_system->pipeline->pipeline_layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0,
+                       yPushConstantSize(),
+                       push_constant_data);
+
+    vkCmdDrawIndexed(command_unit->command_buffers[command_buffer_index],
                      6,
                      1,
                      0,
                      0,
                      0);
 
-    yRenderDeveloperConsole(current_frame, image_index);
+    yRenderDeveloperConsole(command_unit,
+                            command_buffer_index,
+                            current_frame, 
+                            image_index);
 
-    output_system->render_stage->renderPassEnd(command_unit->command_buffers[1]);
+    vkCmdEndRenderPass(command_unit->command_buffers[command_buffer_index]);
 }
 
 YsVkOutputSystem* yVkOutputSystemCreate() {
     YsVkOutputSystem* output_system = yCMemoryAllocate(sizeof(YsVkOutputSystem));
     if(output_system) {
         output_system->initialize = initialize;
-        output_system->updateVertex = updateVertex;
-        output_system->rendering = rendering;
+        output_system->cmdDrawCall = cmdDrawCall;
     }
 
     return output_system;

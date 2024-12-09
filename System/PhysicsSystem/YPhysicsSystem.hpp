@@ -28,6 +28,8 @@
 
 #include "YDefines.h"
 #include "YVulkanTypes.h"
+#include "YGLSLStructs.hpp"
+
 
 #include <glm/fwd.hpp>
 #include <glm/vec2.hpp>
@@ -57,8 +59,9 @@ public:
 
     void buildBVH();
 
-    inline i32 bvhNodeCount() {return this->m_bvh_structure_buffer.size();}
-    inline void* bvhData() {return &this->m_bvh_structure_buffer.front();}
+    inline YsBVHNodeComponent* rootBVHNode() {return this->m_root_bvh_node.get();}
+
+    u32 meshVertexIndex(YsMeshComponent* mc) {this->m_mesh_vertex_index_map.find(mc)->second;}
 
 private:
     YPhysicsSystem();
@@ -66,9 +69,7 @@ private:
 
     void recursiveCreateBVH(const std::vector<YsMeshComponent*>& meshes, YsBVHNodeComponent* node, int max_depth, int current_depth = 1);
 
-    void fillingVertexData(const std::vector<YsMeshComponent*>& meshes, YsBVHNodeComponent* node);
-
-    void recursiveFillingBVHStructureBuffer(YsBVHNodeComponent* node);
+    void updateBVHNode(const std::vector<YsMeshComponent*>& meshes, YsBVHNodeComponent* node);
 
     YsAABBComponent computeAABB(const std::vector<YsMeshComponent*>& meshes);
 
@@ -77,8 +78,6 @@ private:
     std::map<YsMeshComponent*, u32> m_mesh_vertex_index_map;
 
     std::unique_ptr<YsBVHNodeComponent> m_root_bvh_node;
-
-    std::vector<GLSL_BVHNode> m_bvh_structure_buffer;
 };
 
 

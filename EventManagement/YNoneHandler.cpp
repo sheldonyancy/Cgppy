@@ -92,15 +92,15 @@ void YNoneHandler::handleEvent(const YsMouseEvent& event) {
             break;
         }
         case YeMouseEventType::DRAGGED: {
-            glm::fquat rotation = YRendererFrontendManager::instance()->trackball()->getRotation(this->m_mouse_press.position, event.position);
+            glm::fquat rotation_model = YRendererFrontendManager::instance()->trackball()->getRotation(this->m_mouse_press.position, event.position);
 
-            //
             YRendererBackend* backend = YRendererBackendManager::instance()->backend();
-            backend->rotatePhysicallyBasedCamera(rotation);
-            //
+            glm::fquat rotation_camera = glm::conjugate(rotation_model);
+            backend->rotatePhysicallyBasedCamera(rotation_camera);
 
-            glm::fmat4x4 rotation_matrix = glm::toMat4(rotation);
-            YSceneManager::instance()->applyRotation(rotation_matrix);
+            glm::fmat4x4 rotation_model_matrix = glm::toMat4(rotation_model);
+            YSceneManager::instance()->applyRotation(rotation_model_matrix);
+            YRendererBackendManager::instance()->backend()->updateHostUbo();
             this->m_mouse_press = event;
             break;
         }
@@ -123,10 +123,13 @@ void YNoneHandler::handleEvent(const YsUpdateSceneEvent& event) {
 
     YPhysicsSystem::instance()->buildBVH();
 
-    YRendererBackendManager::instance()->backend()->updateVertexInputResource();
-    YRendererBackendManager::instance()->backend()->updateGlobalSceneBlockResource();
+    YRendererBackendManager::instance()->backend()->updateHostVertexInput();
+    YRendererBackendManager::instance()->backend()->updateHostSsbo();
+    YRendererBackendManager::instance()->backend()->updateHostUbo();
+    YRendererBackendManager::instance()->backend()->setNeedDraw(true);
 }
 
 void YNoneHandler::handleEvent(const YsChangingRenderingModelEvent& event) {
     YRendererBackendManager::instance()->backend()->changingRenderingModel(static_cast<int>(event.type));
+    YRendererBackendManager::instance()->backend()->updateHostUbo();
 }

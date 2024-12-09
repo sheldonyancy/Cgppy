@@ -115,6 +115,7 @@ bool YShaderManager::compileGlslToSpv(YeAssetsShader s, shaderc_shader_kind kind
     this->m_spv_code_map.emplace(s, spv_code);
 
     std::string spv_file_path = yAssetsSpvFile(s);
+    
     std::ofstream out_file(spv_file_path.c_str(), std::ios::binary);
     if (!out_file) {
         YERROR("Cannot open file for writing: %s", spv_file_path.c_str());

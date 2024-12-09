@@ -82,13 +82,6 @@ typedef struct YsVkPipeline {
 
     void (*destroy)(struct YsVkContext* context, struct YsVkPipeline* pipeline);
 
-    void (*bind)(VkCommandBuffer command_buffer, struct YsVkPipeline* pipeline);
-
-    void (*bindDescriptorSets)(VkCommandBuffer command_buffer,
-                                       u32 first_set,
-                                       u32 descriptor_set_count,
-                                       VkDescriptorSet* descriptor_sets,
-                                       struct YsVkPipeline* pipeline);
     YsVkPipelineConfig* config;
     VkPipeline handle;
     VkPipelineLayout pipeline_layout;

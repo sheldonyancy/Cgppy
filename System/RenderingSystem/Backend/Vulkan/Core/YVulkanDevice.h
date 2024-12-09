@@ -77,6 +77,7 @@ typedef struct YsVkDevice {
     VkPhysicalDevice physical_device;
     VkPhysicalDeviceProperties properties;
     VkPhysicalDeviceFeatures features;
+    VkPhysicalDeviceVulkan12Features features_12;
     VkPhysicalDeviceMemoryProperties memory;
 
     VkDevice logical_device;

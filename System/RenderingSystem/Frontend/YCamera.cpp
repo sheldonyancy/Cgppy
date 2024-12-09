@@ -77,7 +77,7 @@ void YCamera::updateProjectionMatrix() {
 
             this->m_opengl_projection_matrix = glm::ortho(left, right, bottom, top, CAMERA_Z_NEAR, CAMERA_Z_FAR);
 
-            glm::mat4 clip = glm::mat4(1.0f, 0.0f, 0.0f, 0.0f,
+            glm::fmat4 clip = glm::fmat4(1.0f, 0.0f, 0.0f, 0.0f,
                                        0.0f, 1.0f, 0.0f, 0.0f,
                                        0.0f, 0.0f, 0.5f, 0.0f,
                                        0.0f, 0.0f, 0.5f, 1.0f);

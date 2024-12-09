@@ -39,12 +39,13 @@ typedef struct YsVkShadowMappingSystem {
                      struct YsVkResources* resources,
                      struct YsVkShadowMappingSystem* shadow_mapping_system);
 
-    void (*rendering)(struct YsVkContext* context,
-                      struct YsVkCommandUnit* command_unit,
-                      struct YsVkResources* resources,
-                      u32 image_index,
-                      struct YsVkShadowMappingSystem* shadow_mapping_system,
-                      void* push_constant_data);
+    void (*cmdDrawCall)(struct YsVkContext* context,
+                        struct YsVkCommandUnit* command_unit,
+                        u32 command_buffer_index,
+                        struct YsVkResources* resources,
+                        u32 image_index,
+                        struct YsVkShadowMappingSystem* shadow_mapping_system,
+                        void* push_constant_data);
 
     struct YsVkRenderStage* render_stage;
     struct YsVkPipeline* pipeline;

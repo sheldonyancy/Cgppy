@@ -28,7 +28,7 @@
 
 #include "YDefines.h"
 #include "YVulkanTypes.h"
-
+#include "YGLSLStructs.hpp"
 
 #include <glm/fwd.hpp>
 #include <glm/vec2.hpp>
@@ -53,7 +53,7 @@ public:
 
     inline i32 materialCount() {return this->m_material_struct_buffer.size();};
 
-    inline void* materialData() {return &this->m_material_struct_buffer.front();};
+    inline void* materialData() {return this->m_material_struct_buffer.data();};
 
     inline i32 materialId(YsMaterialComponent* mc) {return this->m_material_index_map.find(mc)->second;};
 

@@ -25,7 +25,6 @@
 const float GLSL_INFINITY = 1.0 / 0.0;
 const float EPSILON = 0.001;
 const uint MAX_ARR_SIZE = 64;
-uint XORShift_RNG = 0;
 
 const float PI = 3.14159265358979323846;
 const float PI_INV = 1.0 / PI;
@@ -38,6 +37,9 @@ const uint RAY_TRACING_MAX_DEPTH = 100;
 const float SHININESS = 32.0;
 const float SPECULAR_STRENGTH = 0.5;
 const float AMBIENT_STRENGTH = 0.1;
+
+uint XORShift_RNG = 0;
+
 
 
 

@@ -39,16 +39,13 @@ typedef struct YsVkOutputSystem {
                      struct YsVkResources* resources,
                      struct YsVkOutputSystem* output_system);
 
-    void (*updateVertex)(struct YsVkContext* context,
-                         struct YsVkResources* resources,
-                         struct YsVkOutputSystem* output_system,
-                         u32 rendering_model_type);
-
-    void (*rendering)(struct YsVkContext* context,
+    void (*cmdDrawCall)(struct YsVkContext* context,
                       struct YsVkCommandUnit* command_unit,
+                      u32 command_buffer_index,
                       struct YsVkResources* resources,
                       u32 image_index,
                       u32 current_frame,
+                      void* push_constant_data,
                       struct YsVkOutputSystem* output_system);
 
     struct YsVkRenderStage* render_stage;

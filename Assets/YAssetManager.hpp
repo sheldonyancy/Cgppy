@@ -39,7 +39,7 @@ public:
 
     template <typename T>
     void loadAsset(const std::string& file_path) {
-        auto importer = createImporter<T>();
+        auto importer = new T;
 
         this->m_async_tasks.push_back(std::make_unique<YAsyncTask<void, const std::string&>>());
         this->m_async_tasks.back()->start(importer, &YAssetImporter::import, file_path);
@@ -49,10 +49,10 @@ private:
     YAssetManager();
     ~YAssetManager();
 
-    template <typename T>
-    std::unique_ptr<T> createImporter() {
-        return std::make_unique<T>();
-    }
+    //template <typename T>
+    //std::unique_ptr<T> createImporter() {
+    //    return std::make_unique<T>();
+    //}
 
 private:
     std::list<std::unique_ptr<YAsyncTask<void, const std::string&>>> m_async_tasks;

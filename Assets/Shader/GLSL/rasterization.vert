@@ -28,9 +28,9 @@
 
 #include "define.glsl"
 #include "struct.glsl"
-#include "global_ubo.glsl"
-#include "global_scene_block.glsl"
-#include "push_constants.glsl"
+#include "uniform_buffer_object.glsl"
+#include "stroage_buffer_object.glsl"
+#include "push_constant_object.glsl"
 
 layout(location = 0) in vec4 in_position;
 layout(location = 1) in vec4 in_normal;
@@ -52,12 +52,12 @@ const mat4 bias_mat = mat4(
 void main() {
     out_dto.position = in_position.xyz;
     out_dto.normal = in_normal.xyz;
-    out_dto.color = global_scene_block.object.materials[in_material_id].albedo;
+    out_dto.color = ssbo.materials[in_material_id].albedo;
     out_dto.shadow_coord = bias_mat
-                          *global_ubo.object.light.space_matrix
-                          *push_constants.object.model_matrix * vec4(in_position.xyz, 1.0);
+                          *ubo.light.space_matrix
+                          *ubo.model_matrix * vec4(in_position.xyz, 1.0);
 
-    gl_Position = global_ubo.object.rasterization_camera.projection_matrix
-                 *global_ubo.object.rasterization_camera.view_matrix
-                 *push_constants.object.model_matrix * vec4(in_position.xyz, 1.0);
+    gl_Position = ubo.rasterization_camera.projection_matrix
+                 *ubo.rasterization_camera.view_matrix
+                 *ubo.model_matrix * vec4(in_position.xyz, 1.0);
 }

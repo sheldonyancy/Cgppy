@@ -70,9 +70,7 @@ typedef struct YsVkDescription {
 typedef struct YsVkResources {
     //
     void (*initialize)(struct YsVkContext* context,
-                       struct YsVkResources* resource,
-                       vec2 shadow_map_image_resolution,
-                       vec2 path_tracing_image_resolution);
+                       struct YsVkResources* resource);
 
     void (*createVertexInputBuffer)(struct YsVkContext* context,
                                     struct YsVkResources* resource,
@@ -85,26 +83,32 @@ typedef struct YsVkResources {
                                     void* vertex_normal_data,
                                     void* vertex_material_id_data);
 
-    void (*updateGlobalUboBuffer)(struct YsVkContext* context,
-                                  struct YsVkResources* resource,
-                                  void* data);
+    void (*updateUboBuffer)(struct YsVkContext* context,
+                            struct YsVkResources* resource,
+                            void* data);
 
-    void (*createGlobalSceneBlockBuffer)(struct YsVkContext* context,
-                                         struct YsVkResources* resource,
-                                         u32 data_size);
+    void (*createSsboBuffer)(struct YsVkContext* context,
+                             struct YsVkResources* resource,
+                             u32 data_size);
 
-    void (*updateGlobalSceneBlockBuffer)(struct YsVkContext* context,
-                                         struct YsVkResources* resource,
-                                         void* data);
-
-    void (*updateDescriptorSets)(struct YsVkContext* context,
-                                 struct YsVkResources* resource,
-                                 struct YsVkRenderingSystem* rendering_system,
-                                 u32 image_index);
-
-    void (*cmdPushConstants)(VkCommandBuffer command_buffer,
-                             struct YsVkPipeline* pipeline,
+    void (*updateSsboBuffer)(struct YsVkContext* context,
+                             struct YsVkResources* resource,
                              void* data);
+
+    void (*updateSsboDescriptorSets)(struct YsVkContext* context,
+                                      struct YsVkResources* resource,
+                                      struct YsVkRenderingSystem* rendering_system,
+                                      u32 image_index);
+
+    void (*updateUboDescriptorSets)(struct YsVkContext* context,
+                                      struct YsVkResources* resource,
+                                      struct YsVkRenderingSystem* rendering_system,
+                                      u32 image_index);
+
+    void (*updateImageDescriptorSets)(struct YsVkContext* context,
+                                      struct YsVkResources* resource,
+                                      struct YsVkRenderingSystem* rendering_system,
+                                      u32 image_index);
 
     void (*updateRandomImage)(struct YsVkContext* context,
                               struct YsVkResources* resource,
@@ -167,21 +171,6 @@ typedef struct YsVkResources {
                                   VkPipelineStageFlags src_stage_mask,
                                   VkPipelineStageFlags dst_stage_mask);
 
-    void (*imageCopyFromBuffer)(YsVkImage* image,
-                                VkBuffer buffer,
-                                u64 offset,
-                                VkCommandBuffer command_buffer);
-
-    void (*imageCopyToBuffer)(YsVkImage* image,
-                              VkBuffer buffer,
-                              VkCommandBuffer command_buffer);
-
-    void (*imageCopyPixelToBuffer)(YsVkImage* image,
-                                   VkBuffer buffer,
-                                   u32 x,
-                                   u32 y,
-                                   VkCommandBuffer command_buffer);
-
     void (*imageClear)(struct YsVkContext* context,
                        struct YsVkCommandUnit* command_unit,
                        YsVkImage* image,
@@ -189,6 +178,12 @@ typedef struct YsVkResources {
                        u32 layer_count);
 
     void (*imageDestroy)(struct YsVkContext* context, YsVkImage* image);
+
+    void (*saveImageToPng)(struct YsVkContext* context,
+                           struct YsVkResources* resource,
+                           YsVkImage* image,
+                           struct YsVkCommandUnit* command_unit,
+                           const char* output_png_file);
 
     //
     u32 current_draw_vertex_count;
@@ -206,11 +201,14 @@ typedef struct YsVkResources {
     struct YsVkBuffer* vertex_input_material_id_buffer;
 
     //
-    YsVkDescription* global_ubo_descriptor;
-    struct YsVkBuffer* global_ubo_buffer;
+    YsVkDescription* ubo_descriptor;
+    struct YsVkBuffer* ubo_buffer;
 
-    YsVkDescription* global_scene_block_descriptor;
-    struct YsVkBuffer* global_scene_block_buffer;
+    YsVkDescription* ssbo_descriptor;
+    struct YsVkBuffer* ssbo_buffer;
+
+    u32 push_constant_range_count;
+    VkPushConstantRange* push_constant_range;
 
     YsVkDescription* image_descriptor;
     YsVkImage rasterization_color_image;
@@ -222,10 +220,6 @@ typedef struct YsVkResources {
     //
     VkSampler sampler_linear;
     VkSampler sampler_nearest;
-
-    //
-    u32 push_constant_range_count;
-    VkPushConstantRange* push_constant_range;
 } YsVkResources;
 
 YsVkResources* yVkAllocateResourcesObject();

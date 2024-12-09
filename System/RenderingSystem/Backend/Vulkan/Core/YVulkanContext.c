@@ -226,13 +226,13 @@ static b8 yVkInstanceCreate(const i8* const* enable_extensions,
 static b8 yVkDebuggerCreate(YsVkContext* context) {
 #ifndef NDEBUG
     YDEBUG("Creating Vulkan debugger...");
-    u32 log_severity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |
-                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                       VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+    u32 log_severity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 
     VkDebugUtilsMessengerCreateInfoEXT debug_create_info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
     debug_create_info.messageSeverity = log_severity;
-    debug_create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
+    debug_create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
+                                    VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | 
+                                    VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
     debug_create_info.pfnUserCallback = yVkDebugCallback;
 
     PFN_vkCreateDebugUtilsMessengerEXT func =
@@ -293,7 +293,7 @@ static b8 initialize(struct GLFWwindow* glfw_window,
     context->swapchain->create(context,
                                context->framebuffer_width,
                                context->framebuffer_height,
-                               VK_PRESENT_MODE_IMMEDIATE_KHR,
+                               VK_PRESENT_MODE_FIFO_KHR, //VK_PRESENT_MODE_IMMEDIATE_KHR,
                                context->swapchain);
     YINFO("Vulkan Context Initialized Successfully.");
 

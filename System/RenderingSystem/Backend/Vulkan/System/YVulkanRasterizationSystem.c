@@ -32,9 +32,10 @@
 #include "YLogger.h"
 #include "YCMemoryManager.h"
 #include "YAssets.h"
+#include "YGlobalFunction.h"
 
 
-static b8 initializeRasterizationSystem(YsVkContext* context,
+static b8 initialize(YsVkContext* context,
                                         YsVkResources* resources,
                                         YsVkRasterizationSystem* rasterization_system) {
     // Render Stage
@@ -114,8 +115,8 @@ static b8 initializeRasterizationSystem(YsVkContext* context,
     rasterization_pipeline_config->vertex_input_info = &pipeline_vertex_info;
     rasterization_pipeline_config->descriptor_set_layout_count = 3;
     rasterization_pipeline_config->descriptor_set_layouts = (VkDescriptorSetLayout*)yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * rasterization_pipeline_config->descriptor_set_layout_count);
-    rasterization_pipeline_config->descriptor_set_layouts[0] = resources->global_ubo_descriptor->descriptor_set_layout;
-    rasterization_pipeline_config->descriptor_set_layouts[1] = resources->global_scene_block_descriptor->descriptor_set_layout;
+    rasterization_pipeline_config->descriptor_set_layouts[0] = resources->ubo_descriptor->descriptor_set_layout;
+    rasterization_pipeline_config->descriptor_set_layouts[1] = resources->ssbo_descriptor->descriptor_set_layout;
     rasterization_pipeline_config->descriptor_set_layouts[2] = resources->image_descriptor->descriptor_set_layout;
     rasterization_pipeline_config->push_constant_range_count = resources->push_constant_range_count;
     rasterization_pipeline_config->push_constant_range = resources->push_constant_range;
@@ -150,13 +151,14 @@ static b8 initializeRasterizationSystem(YsVkContext* context,
     return true;
 }
 
-static void rendering(YsVkContext* context,
-                      YsVkCommandUnit* command_unit,
-                      YsVkResources* resources,
-                      u32 image_index,
-                      u32 current_frame,
-                      void* push_constant_data,
-                      YsVkRasterizationSystem* rasterization_system) {
+static void cmdDrawCall(YsVkContext* context,
+                        YsVkCommandUnit* command_unit,
+                        u32 command_buffer_index,
+                        YsVkResources* resources,
+                        u32 image_index,
+                        u32 current_frame,
+                        void* push_constant_data,
+                        YsVkRasterizationSystem* rasterization_system) {
     VkViewport viewport;
     viewport.x = 0.0f;
     viewport.y = 0;
@@ -179,55 +181,66 @@ static void rendering(YsVkContext* context,
     clear_values[1].depthStencil.depth = 1.0f;
     clear_values[1].depthStencil.stencil = 0;
 
-    vkCmdSetViewport(command_unit->command_buffers[0], 0, 1, &viewport);
-    vkCmdSetScissor(command_unit->command_buffers[0], 0, 1, &scissor);
+    vkCmdSetViewport(command_unit->command_buffers[command_buffer_index], 0, 1, &viewport);
+    vkCmdSetScissor(command_unit->command_buffers[command_buffer_index], 0, 1, &scissor);
 
-    rasterization_system->render_stage->renderPassBegin(command_unit->command_buffers[0],
-                                                        &rasterization_system->render_stage->framebuffers[current_frame],
-                                                        scissor,
-                                                        rasterization_system->render_stage->create_info->attachment_count,
-                                                        clear_values,
-                                                        rasterization_system->render_stage);
+    VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    render_pass_begin_info.renderPass = rasterization_system->render_stage->render_pass_handle;
+    render_pass_begin_info.framebuffer = rasterization_system->render_stage->framebuffers[current_frame];
+    render_pass_begin_info.renderArea = scissor;
+    render_pass_begin_info.clearValueCount = rasterization_system->render_stage->create_info->attachment_count;
+    render_pass_begin_info.pClearValues = clear_values;
+    vkCmdBeginRenderPass(command_unit->command_buffers[command_buffer_index], 
+                         &render_pass_begin_info,
+                         VK_SUBPASS_CONTENTS_INLINE);                                                    
 
-    rasterization_system->pipeline->bind(command_unit->command_buffers[0], rasterization_system->pipeline);
+    vkCmdBindPipeline(command_unit->command_buffers[command_buffer_index],
+                      VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      rasterization_system->pipeline->handle);
 
     VkBuffer vertex_buffers[3] = {resources->vertex_input_position_buffer->handle,
                                   resources->vertex_input_normal_buffer->handle,
                                   resources->vertex_input_material_id_buffer->handle};
     VkDeviceSize vertex_offsets[3] = {0};
-    vkCmdBindVertexBuffers(command_unit->command_buffers[0],
+    vkCmdBindVertexBuffers(command_unit->command_buffers[command_buffer_index],
                            0,
                            3,
                            vertex_buffers,
                            vertex_offsets);
 
-    VkDescriptorSet descriptor_sets[3] = {resources->global_ubo_descriptor->descriptor_sets[image_index],
-                                          resources->global_scene_block_descriptor->descriptor_sets[image_index],
+    VkDescriptorSet descriptor_sets[3] = {resources->ubo_descriptor->descriptor_sets[image_index],
+                                          resources->ssbo_descriptor->descriptor_sets[image_index],
                                           resources->image_descriptor->descriptor_sets[image_index]};
-    rasterization_system->pipeline->bindDescriptorSets(command_unit->command_buffers[0],
-                                                       resources->global_ubo_descriptor->first_set,
-                                                       3,
-                                                       descriptor_sets,
-                                                       rasterization_system->pipeline);
+    vkCmdBindDescriptorSets(command_unit->command_buffers[command_buffer_index],
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            rasterization_system->pipeline->pipeline_layout,
+                            resources->ubo_descriptor->first_set,
+                            3,
+                            descriptor_sets,
+                            0,
+                            NULL);                                                   
 
-    resources->cmdPushConstants(command_unit->command_buffers[0],
-                                rasterization_system->pipeline,
-                                push_constant_data);
+    vkCmdPushConstants(command_unit->command_buffers[command_buffer_index],
+                       rasterization_system->pipeline->pipeline_layout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0,
+                       yPushConstantSize(),
+                       push_constant_data);
 
-    vkCmdDraw(command_unit->command_buffers[0],
+    vkCmdDraw(command_unit->command_buffers[command_buffer_index],
               resources->current_draw_vertex_count,
               1,
               0,
               0);
 
-    rasterization_system->render_stage->renderPassEnd(command_unit->command_buffers[0]);
+    vkCmdEndRenderPass(command_unit->command_buffers[command_buffer_index]);
 }
 
 YsVkRasterizationSystem* yVkRasterizationSystemCreate() {
     YsVkRasterizationSystem* rasterization_system = yCMemoryAllocate(sizeof(YsVkRasterizationSystem));
     if(rasterization_system) {
-        rasterization_system->initialize = initializeRasterizationSystem;
-        rasterization_system->rendering = rendering;
+        rasterization_system->initialize = initialize;
+        rasterization_system->cmdDrawCall = cmdDrawCall;
     }
 
     return rasterization_system;

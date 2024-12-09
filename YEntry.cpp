@@ -30,11 +30,33 @@
 #include "YMdlaImporter.hpp"
 #include "YRendererFrontendManager.hpp"
 #include "YRendererBackendManager.hpp"
+#include "YGLSLStructs.hpp"
+#include "YProfiler.hpp"
 
 #include <boost/dll/runtime_symbol_info.hpp>
 
+#include <cstdint>
+
+struct mm {
+    int a;
+    char b;
+};
+
+struct alignas(16) aa{
+    alignas(8) int rendering_model;
+};
+
 
 int main(int argc, char *argv[]) {
+    aa a;
+    //uintptr_t addr0 = reinterpret_cast<uintptr_t>(&a.rendering_model);
+    //uintptr_t addr1 = reinterpret_cast<uintptr_t>(&a.model_matrix);
+
+    alignas(64) aa fuck;
+    int size = sizeof(fuck);
+
+
+    //
     std::string exe_path = boost::dll::program_location().parent_path().string();
     yLogInit(exe_path.c_str());
     YINFO("Executable Path: %s", exe_path.c_str());
@@ -52,6 +74,8 @@ int main(int argc, char *argv[]) {
 
     //YAssetManager::instance()->loadAsset<YStlImporter>(yAssetsModelFile(Teapot));
     YAssetManager::instance()->loadAsset<YMdlaImporter>("");
+
+    YProfiler::instance()->run();
 
     YRendererFrontendManager::instance()->eventLoop();
 

@@ -25,7 +25,7 @@
 #extension GL_ARB_shader_storage_buffer_object : enable
 
 
-layout(std430, set = 1, binding = 0) buffer StorageBufferObject {
+layout(std430, set = 0, binding = 0) buffer StorageBufferObject {
     int bvh_node_count;
     int material_count;
     int vertex_count;

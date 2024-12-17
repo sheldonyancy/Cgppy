@@ -34,15 +34,6 @@
 extern "C" {
 #endif
 
-
-typedef struct YsVkSwapchainSupportInfo {
-    VkSurfaceCapabilitiesKHR capabilities;
-    u32 format_count;
-    VkSurfaceFormatKHR* formats;
-    u32 present_mode_count;
-    VkPresentModeKHR* present_modes;
-} YsVkSwapchainSupportInfo;
-
 typedef struct YsVkSwapchain {
     void (*create)(struct YsVkContext* context,
                    u32 width,

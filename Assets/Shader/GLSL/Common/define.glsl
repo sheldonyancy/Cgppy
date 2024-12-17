@@ -32,7 +32,6 @@ const float PI_2_INV = 1.0 / (2.0 * PI);
 
 const float RAY_TIME_MIN = 0.01;
 const float RAY_TIME_MAX = 99999.9;
-const uint RAY_TRACING_MAX_DEPTH = 100;
 
 const float SHININESS = 32.0;
 const float SPECULAR_STRENGTH = 0.5;

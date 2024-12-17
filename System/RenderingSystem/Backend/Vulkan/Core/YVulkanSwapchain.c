@@ -23,8 +23,9 @@
  */
 
 #include "YVulkanSwapchain.h"
-#include "Backend/Vulkan/Core/YVulkanContext.h"
-#include "Backend/Vulkan/Core/YVulkanDevice.h"
+#include "YVulkanContext.h"
+#include "YVulkanDevice.h"
+#include "YVulkanImage.h"
 #include "YLogger.h"
 #include "YDefines.h"
 #include "YCMemoryManager.h"
@@ -34,7 +35,9 @@ static void destroy(YsVkContext* context, YsVkSwapchain* swapchain) {
     vkDeviceWaitIdle(context->device->logical_device);
 
     for (u32 i = 0; i < swapchain->image_count; ++i) {
-        vkDestroyImageView(context->device->logical_device, swapchain->present_src_images[i].individual_views[0], context->allocator);
+        vkDestroyImageView(context->device->logical_device, 
+                           swapchain->present_src_images[i].image_view, 
+                           context->allocator);
     }
 
     vkDestroySwapchainKHR(context->device->logical_device, swapchain->handle, context->allocator);
@@ -135,11 +138,10 @@ static void create(YsVkContext* context,
         view_info.subresourceRange.baseArrayLayer = 0;
         view_info.subresourceRange.layerCount = 1;
 
-        swapchain->present_src_images[i].individual_views = yCMemoryAllocate(sizeof(VkImageView));
         VK_CHECK(vkCreateImageView(context->device->logical_device,
                                    &view_info,
                                    context->allocator,
-                                   swapchain->present_src_images[i].individual_views));
+                                   &swapchain->present_src_images[i].image_view));
     }
 
     YINFO("Swapchain created successfully.");

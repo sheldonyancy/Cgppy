@@ -33,7 +33,7 @@
 #include "YMeshComponent.hpp"
 #include "YMaterialComponent.hpp"
 #include "YRendererFrontendManager.hpp"
-#include "YGlfwWindow.hpp"
+#include "YRendererBackendManager.hpp"
 #include "YCamera.hpp"
 #include "YMath.h"
 #include "YCMemoryManager.h"
@@ -49,41 +49,10 @@
 YRendererBackend::YRendererBackend()
     : m_init_finished(false),
       m_need_draw(false),
-      m_need_draw_shadow_mapping(true),
-      m_need_draw_rasterization(true),
-      m_need_draw_path_tracing(true),
       m_need_update_device_vertex_input(false),
       m_need_update_device_ssbo(false),
       m_need_update_device_ubo(false){
-    glfwGetFramebufferSize(YRendererFrontendManager::instance()->glfwWindow()->glfwWindow(), 
-                           &this->m_frame_buffer_size.x, 
-                           &this->m_frame_buffer_size.y);        
 
-    this->m_ubo.physically_based_camera.position[0] = 278;
-    this->m_ubo.physically_based_camera.position[1] = 273;
-    this->m_ubo.physically_based_camera.position[2] = -800;
-    this->m_ubo.physically_based_camera.target[0] = 278;
-    this->m_ubo.physically_based_camera.target[1] = 273;
-    this->m_ubo.physically_based_camera.target[2] = 279.6;
-    this->m_ubo.physically_based_camera.forward[0] = 0.0f;
-    this->m_ubo.physically_based_camera.forward[1] = 0.0f;
-    this->m_ubo.physically_based_camera.forward[2] = 1.0f;
-    this->m_ubo.physically_based_camera.up[0] = 0.0f;
-    this->m_ubo.physically_based_camera.up[1] = 1.0f;
-    this->m_ubo.physically_based_camera.up[2] = 0.0f;
-    this->m_ubo.physically_based_camera.right[0] = 1.0f;
-    this->m_ubo.physically_based_camera.right[1] = 0.0f;
-    this->m_ubo.physically_based_camera.right[2] = 0.0f;
-    this->m_ubo.physically_based_camera.focal_length = 35;
-    this->m_ubo.physically_based_camera.image_sensor_width = 25.0f * (float(this->m_frame_buffer_size.x) / float(this->m_frame_buffer_size.y));
-    this->m_ubo.physically_based_camera.image_sensor_height = 25;
-    this->m_ubo.physically_based_camera.resolution[0] = this->m_frame_buffer_size.x;
-    this->m_ubo.physically_based_camera.resolution[1] = this->m_frame_buffer_size.y;
-
-    this->m_push_constant.total_samples = 0;
-    this->m_push_constant.frame_samples[0] = 0.0f;
-    this->m_push_constant.frame_samples[1] = 0.0f;
-    this->m_push_constant.frame_samples[2] = 0.0f;
 }
 
 YRendererBackend::~YRendererBackend() {
@@ -138,13 +107,20 @@ void YRendererBackend::updateHostSsbo() {
 }
 
 void YRendererBackend::updateHostUbo() {
+    //
+    this->m_ubo.rendering_model = static_cast<int>(YRendererBackendManager::instance()->getRenderingModel());
+    this->m_ubo.path_tracing_spp = YRendererBackendManager::instance()->getPathTracingSpp();
+    this->m_ubo.path_tracing_max_depth = YRendererBackendManager::instance()->getPathTracingMaxDepth();
+    
+    //
     YsAreaLightComponent* light_component = YSceneManager::instance()->getComponents<YsAreaLightComponent>().front();
     glm::fvec3 light_center = YSceneManager::instance()->modelMatrix() * glm::fvec4(light_component->center, 1.0);
     glm::fvec3 light_target = YSceneManager::instance()->modelMatrix() * glm::fvec4(light_component->light_space_target, 1.0);
     glm::fvec3 light_up = glm::normalize((transpose(inverse(YSceneManager::instance()->modelMatrix())) * glm::fvec4(light_component->light_space_up, 1.0)));
     glm::fmat4x4 light_view_matrix = glm::lookAt(light_center, light_target, light_up);
     float fovy = glm::radians(100.0f);
-    float aspect = float(this->m_frame_buffer_size.x) / float(this->m_frame_buffer_size.y);
+    glm::fvec2 window_size = YRendererFrontendManager::instance()->mainWindowSize();
+    float aspect = window_size.x / window_size.y;
     glm::fmat4x4 light_projection_matrix = glm::perspective(fovy, aspect, CAMERA_Z_NEAR, 1.3f);
     light_component->light_space_matrix = light_projection_matrix * light_view_matrix;
 
@@ -177,7 +153,7 @@ void YRendererBackend::draw() {
         return;
     }
 
-    if(!this->framePrepare(&(this->m_push_constant.accumulate_image_index))) {
+    if(!this->framePrepare()){
         YERROR("Frame Prepare Error!");
         return;
     }
@@ -202,10 +178,9 @@ void YRendererBackend::draw() {
         this->m_need_update_device_ubo = false;            
     }
 
-    this->m_push_constant.total_samples++;
-    this->m_push_constant.current_frame = this->m_current_frame;
-    this->m_push_constant.frame_samples[this->m_current_frame]++;
-
+    this->m_push_constant[this->m_current_frame].current_present_image_index = this->m_current_present_image_index;
+    this->m_push_constant[this->m_current_frame].current_frame = this->m_current_frame;
+    
     this->frameRun();
 
     if(!this->framePresent()) {
@@ -227,11 +202,6 @@ void YRendererBackend::rotatePhysicallyBasedCamera(const glm::fquat& rotation) {
                                                                rotation);
 
     this->m_ubo.physically_based_camera.forward = glm::normalize(this->m_ubo.physically_based_camera.target - this->m_ubo.physically_based_camera.position);
-
-    this->m_push_constant.total_samples = 0;
-    this->m_push_constant.frame_samples[0] = 0;
-    this->m_push_constant.frame_samples[1] = 0;
-    this->m_push_constant.frame_samples[2] = 0;
 }
 
 void YRendererBackend::recursiveFillingBVHBuffer(std::vector<GLSL_BVHNode>* bvh_buffers, YsBVHNodeComponent* node) {

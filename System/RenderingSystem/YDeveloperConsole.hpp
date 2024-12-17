@@ -59,7 +59,7 @@ public:
     void cmdDraw(YsVkCommandUnit* command_unit,
                  u32 command_buffer_index,
                  u32 current_frame, 
-                 u32 image_index);
+                 u32 current_present_image_index);
 
 private:
     YDeveloperConsole();
@@ -78,9 +78,8 @@ private:
 
     VkDescriptorPool m_imgui_descriptor_pool;
 
-    VkDescriptorSet m_shadow_mapping_descriptor_set;
-    VkDescriptorSet* m_accumulate_image_descriptor_sets;
     VkDescriptorSet* m_rasterization_image_descriptor_sets;
+    VkDescriptorSet* m_shadow_mapping_descriptor_sets;
 
     //
     const char* m_rendering_model_items[2] = {"Path Tracing", "Rasterization"};
@@ -95,11 +94,6 @@ private:
                                      "Dubrovnik Sponza",
                                      "Conference Room",
                                      "LPS Head"};
-
-    //
-    
-
-    YeRenderingModelType m_current_rendering_model_type = YeRenderingModelType::PathTracing;
 };
 
 #endif //CGPPY_YDEVELOPERCONSOLE_HPP

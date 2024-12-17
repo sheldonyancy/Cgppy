@@ -29,6 +29,8 @@
 #include "YVulkanContext.h"
 #include "YVulkanDevice.h"
 #include "YVulkanResource.h"
+#include "YVulkanImage.h"
+#include "YVulkanBuffer.h"
 #include "YLogger.h"
 #include "YCMemoryManager.h"
 #include "YAssets.h"
@@ -46,8 +48,8 @@ static float computeScale(const float* image_size, const float* window_size) {
 }
 
 static b8 initialize(YsVkContext* context,
-                                 YsVkResources* resources,
-                                 YsVkOutputSystem* output_system) {
+                     YsVkResources* resources,
+                     YsVkOutputSystem* output_system) {
     // Render Stage
     YsVkRenderStageCreateInfo* render_stage_create_info = yCMemoryAllocate(sizeof(YsVkRenderStageCreateInfo));
     render_stage_create_info->attachment_count = 1;
@@ -74,7 +76,7 @@ static b8 initialize(YsVkContext* context,
     for(int i = 0; i < render_stage_create_info->framebuffer_count; ++i) {
         render_stage_create_info->framebuffer_create_info[i].sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         render_stage_create_info->framebuffer_create_info[i].attachmentCount = render_stage_create_info->attachment_count;
-        render_stage_create_info->framebuffer_create_info[i].pAttachments = &context->swapchain->present_src_images[i].individual_views[0];
+        render_stage_create_info->framebuffer_create_info[i].pAttachments = &context->swapchain->present_src_images[i].image_view;
         render_stage_create_info->framebuffer_create_info[i].width = context->swapchain->present_src_images->create_info->extent.width;
         render_stage_create_info->framebuffer_create_info[i].height = context->swapchain->present_src_images->create_info->extent.height;
         render_stage_create_info->framebuffer_create_info[i].layers = 1;
@@ -117,6 +119,7 @@ static b8 initialize(YsVkContext* context,
 
     //
     YsVkPipelineConfig* output_pipeline_config = yCMemoryAllocate(sizeof(YsVkPipelineConfig));
+    output_pipeline_config->pipeline_type = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     output_pipeline_config->shader_config.shader_stage_config_count = 2;
     output_pipeline_config->shader_config.shader_stage_config[0].stage_flag = VK_SHADER_STAGE_VERTEX_BIT;
     output_pipeline_config->shader_config.shader_stage_config[0].source_length = getSpvCodeSize(Output_Vert);
@@ -126,23 +129,23 @@ static b8 initialize(YsVkContext* context,
     output_pipeline_config->shader_config.shader_stage_config[1].source = getSpvCode(Output_Frag);
     output_pipeline_config->render_stage = output_system->render_stage;
     output_pipeline_config->vertex_input_info = &pipeline_vertex_info;
-    output_pipeline_config->descriptor_set_layout_count = 3;
-    output_pipeline_config->descriptor_set_layouts = (VkDescriptorSetLayout*)yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * output_pipeline_config->descriptor_set_layout_count);
-    output_pipeline_config->descriptor_set_layouts[0] = resources->ubo_descriptor->descriptor_set_layout;
-    output_pipeline_config->descriptor_set_layouts[1] = resources->ssbo_descriptor->descriptor_set_layout;
-    output_pipeline_config->descriptor_set_layouts[2] = resources->image_descriptor->descriptor_set_layout;
+    output_pipeline_config->descriptor_count = 3;
+    output_pipeline_config->descriptors = (YsVkDescriptor*)yCMemoryAllocate(sizeof(YsVkDescriptor) * output_pipeline_config->descriptor_count);
+    output_pipeline_config->descriptors[0] = resources->ubo_descriptor;
+    output_pipeline_config->descriptors[1] = resources->rasterization_color_image_descriptor;
+    output_pipeline_config->descriptors[2] = resources->path_tracing_image_fragment_sampled_descriptor;
     output_pipeline_config->push_constant_range_count = resources->push_constant_range_count;
     output_pipeline_config->push_constant_range = resources->push_constant_range;
     output_pipeline_config->viewport.x = 0.0f;
     output_pipeline_config->viewport.y = 0.0f;
-    output_pipeline_config->viewport.width = context->framebuffer_width;
-    output_pipeline_config->viewport.height = context->framebuffer_height;
+    output_pipeline_config->viewport.width = context->swapchain->present_src_images->create_info->extent.width;
+    output_pipeline_config->viewport.height = context->swapchain->present_src_images->create_info->extent.height;
     output_pipeline_config->viewport.minDepth = 0.0f;
     output_pipeline_config->viewport.maxDepth = 1.0f;
     output_pipeline_config->scissor.offset.x = 0;
     output_pipeline_config->scissor.offset.y = 0;
-    output_pipeline_config->scissor.extent.width = context->framebuffer_width;
-    output_pipeline_config->scissor.extent.height = context->framebuffer_height;
+    output_pipeline_config->scissor.extent.width = context->swapchain->present_src_images->create_info->extent.width;
+    output_pipeline_config->scissor.extent.height = context->swapchain->present_src_images->create_info->extent.height;
     output_system->pipeline = yVkAllocatePipelineObject();
     if (!output_system->pipeline->create(context,
                                          output_pipeline_config,
@@ -161,15 +164,16 @@ static b8 initialize(YsVkContext* context,
     }
 
     //
-    output_system->vertex_input_position_buffer = yCMemoryAllocate(sizeof(YsVkBuffer));
-    if (resources->bufferCreate(context,
-                                sizeof(vec4) * 4,
-                                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                true,
-                                output_system->vertex_input_position_buffer)){
-        vec2 window_size = {context->framebuffer_width, context->framebuffer_height};
-        vec2 image_size = {context->framebuffer_width, context->framebuffer_height};
+    output_system->vertex_input_position_buffer = yVkAllocateBufferObject();
+    if (output_system->vertex_input_position_buffer->create(context,
+                                                            sizeof(vec4) * 4,
+                                                            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                                            output_system->vertex_input_position_buffer)){
+        vec2 window_size = {context->swapchain->present_src_images->create_info->extent.width, 
+                            context->swapchain->present_src_images->create_info->extent.height};
+        vec2 image_size = {context->swapchain->present_src_images->create_info->extent.width, 
+                           context->swapchain->present_src_images->create_info->extent.height};
 
         float scale = computeScale(image_size, window_size);
         image_size[0] *= scale;
@@ -180,13 +184,12 @@ static b8 initialize(YsVkContext* context,
                               x,  y, 0.0f, 1.0f,
                               x, -y, 0.0f, 1.0f,
                               -x, -y, 0.0f, 1.0f};
-        resources->bufferLoadDataRange(context,
-                                       context->device->commandUnitsFront(context->device),
-                                       0,
-                                       output_system->vertex_input_position_buffer,
-                                       0,
-                                       position);                                
-
+        output_system->vertex_input_position_buffer->indirectUpdate(context,
+                                                                    context->device->commandUnitsFront(context->device),
+                                                                    VK_NULL_HANDLE,
+                                                                    0,
+                                                                    position,
+                                                                    output_system->vertex_input_position_buffer);
     } else {
         YERROR("Error creating vertex buffer.");
     }
@@ -195,38 +198,36 @@ static b8 initialize(YsVkContext* context,
                               1.0f, 1.0f, 0.0f, 1.0f,
                               1.0f, 0.0f, 0.0f, 1.0f,
                               0.0f, 0.0f, 0.0f, 1.0f};
-    output_system->vertex_input_texcoord_buffer = yCMemoryAllocate(sizeof(YsVkBuffer));
-    if (resources->bufferCreate(context,
-                                sizeof(vec4) * 4,
-                                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                true,
-                                output_system->vertex_input_texcoord_buffer)) {
-        resources->bufferLoadDataRange(context,
-                                       context->device->commandUnitsFront(context->device),
-                                       0,
-                                       output_system->vertex_input_texcoord_buffer,
-                                       0,
-                                       texture_coord);
+    output_system->vertex_input_texcoord_buffer = yVkAllocateBufferObject();
+    if (output_system->vertex_input_texcoord_buffer->create(context,
+                                                            sizeof(vec4) * 4,
+                                                            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                                            output_system->vertex_input_texcoord_buffer)) {
+        output_system->vertex_input_texcoord_buffer->indirectUpdate(context,
+                                                                    context->device->commandUnitsFront(context->device),
+                                                                    VK_NULL_HANDLE,
+                                                                    0,
+                                                                    texture_coord,
+                                                                    output_system->vertex_input_texcoord_buffer);
     } else {
         YERROR("Error creating vertex buffer.");
     }
     //
     u32 indices[6] = {0, 1, 2,
                       2, 3, 0};
-    output_system->vertex_input_index_buffer = yCMemoryAllocate(sizeof(YsVkBuffer));
-    if (resources->bufferCreate(context,
-                                sizeof(u32) * 6,
-                                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                true,
-                                output_system->vertex_input_index_buffer)) {
-        resources->bufferLoadDataRange(context,
-                                       context->device->commandUnitsFront(context->device),
-                                       0,
-                                       output_system->vertex_input_index_buffer,
-                                       0,
-                                       indices);
+    output_system->vertex_input_index_buffer = yVkAllocateBufferObject();
+    if (output_system->vertex_input_index_buffer->create(context,
+                                                         sizeof(u32) * 6,
+                                                         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                                         output_system->vertex_input_index_buffer)) {
+        output_system->vertex_input_index_buffer->indirectUpdate(context,
+                                                                 context->device->commandUnitsFront(context->device),
+                                                                 VK_NULL_HANDLE,
+                                                                 0,
+                                                                 indices,
+                                                                 output_system->vertex_input_index_buffer);
     } else {
         YERROR("Error Creating Index Buffer.");
     }
@@ -238,51 +239,24 @@ static void cmdDrawCall(YsVkContext* context,
                         YsVkCommandUnit* command_unit,
                         u32 command_buffer_index,
                         YsVkResources* resources,
-                        u32 image_index,
+                        u32 current_present_image_index,
                         u32 current_frame,
                         void* push_constant_data,
                         YsVkOutputSystem* output_system) {
-    resources->transitionImageLayout(command_unit->command_buffers[command_buffer_index],
-                                     &resources->path_tracing_accumulate_image,
-                                     0,
-                                     context->swapchain->image_count,
-                                     VK_IMAGE_LAYOUT_UNDEFINED,
-                                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                     VK_ACCESS_NONE,
-                                     VK_ACCESS_SHADER_READ_BIT,
-                                     command_unit->queue_family_index,
-                                     command_unit->queue_family_index,
-                                     VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
     //
-    VkViewport viewport;
-    viewport.x = 0.0f;
-    viewport.y = 0;
-    viewport.width = (f32)context->framebuffer_width;
-    viewport.height = (f32)context->framebuffer_height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor;
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = context->framebuffer_width;
-    scissor.extent.height = context->framebuffer_height;
-
     VkClearValue clear_value;
     clear_value.color.float32[0] = 0.0f;
     clear_value.color.float32[1] = 0.0f;
     clear_value.color.float32[2] = 0.0f;
     clear_value.color.float32[3] = 1.0f;
 
-    vkCmdSetViewport(command_unit->command_buffers[command_buffer_index], 0, 1, &viewport);
-    vkCmdSetScissor(command_unit->command_buffers[command_buffer_index], 0, 1, &scissor);
+    vkCmdSetViewport(command_unit->command_buffers[command_buffer_index], 0, 1, &output_system->pipeline->config->viewport);
+    vkCmdSetScissor(command_unit->command_buffers[command_buffer_index], 0, 1, &output_system->pipeline->config->scissor);
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     render_pass_begin_info.renderPass = output_system->render_stage->render_pass_handle;
     render_pass_begin_info.framebuffer = output_system->render_stage->framebuffers[current_frame];
-    render_pass_begin_info.renderArea = scissor;
+    render_pass_begin_info.renderArea = output_system->pipeline->config->scissor;
     render_pass_begin_info.clearValueCount = output_system->render_stage->create_info->attachment_count;
     render_pass_begin_info.pClearValues = &clear_value;
     vkCmdBeginRenderPass(command_unit->command_buffers[command_buffer_index], 
@@ -306,21 +280,24 @@ static void cmdDrawCall(YsVkContext* context,
                          0,
                          VK_INDEX_TYPE_UINT32);
 
-    VkDescriptorSet descriptor_sets[3] = {resources->ubo_descriptor->descriptor_sets[image_index],
-                                          resources->ssbo_descriptor->descriptor_sets[image_index],
-                                          resources->image_descriptor->descriptor_sets[image_index]};
-    vkCmdBindDescriptorSets(command_unit->command_buffers[command_buffer_index],
-                            VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            output_system->pipeline->pipeline_layout,
-                            resources->ubo_descriptor->first_set,
-                            3,
-                            descriptor_sets,
-                            0,
-                            NULL);                                            
+    for(int i = 0; i < output_system->pipeline->config->descriptor_count; ++i) {
+        const VkDescriptorSet* p_descriptor_set = output_system->pipeline->config->descriptors[i].is_single_descriptor_set ?
+                                                  &output_system->pipeline->config->descriptors[i].descriptor_sets[0] :
+                                                  &output_system->pipeline->config->descriptors[i].descriptor_sets[current_frame];
+
+        vkCmdBindDescriptorSets(command_unit->command_buffers[command_buffer_index],
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                output_system->pipeline->pipeline_layout,
+                                output_system->pipeline->config->descriptors[i].set,
+                                1,
+                                p_descriptor_set,
+                                0,
+                                NULL);    
+    }                                        
 
     vkCmdPushConstants(command_unit->command_buffers[command_buffer_index],
                        output_system->pipeline->pipeline_layout,
-                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
                        0,
                        yPushConstantSize(),
                        push_constant_data);
@@ -335,7 +312,7 @@ static void cmdDrawCall(YsVkContext* context,
     yRenderDeveloperConsole(command_unit,
                             command_buffer_index,
                             current_frame, 
-                            image_index);
+                            current_present_image_index);
 
     vkCmdEndRenderPass(command_unit->command_buffers[command_buffer_index]);
 }

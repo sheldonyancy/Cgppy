@@ -38,6 +38,7 @@ u32 ySsboSize();
 u32 yUboSize();
 u32 yPushConstantSize();
 
+f32 yRoundToOneDecimal(f32 value);
 
 
 #ifdef __cplusplus

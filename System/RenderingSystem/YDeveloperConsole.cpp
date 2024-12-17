@@ -28,6 +28,8 @@
 #include "YGlobalInterface.hpp"
 #include "YVulkanContext.h"
 #include "YVulkanResource.h"
+#include "YVulkanSwapchain.h"
+#include "YVulkanImage.h"
 #include "YVulkanRenderingSystem.h"
 #include "YVulkanOutputSystem.h"
 #include "YVulkanRasterizationSystem.h"
@@ -38,7 +40,6 @@
 #include "glfw/glfw3.h"
 #include "YRendererBackendManager.hpp"
 #include "YRendererFrontendManager.hpp"
-#include "YGlfwWindow.hpp"
 
 #include <iostream>
 #include <chrono>
@@ -74,13 +75,17 @@ void YDeveloperConsole::init(YsVkContext* vk_context,
     pool_info.maxSets = 100;
     pool_info.poolSizeCount = 1;
     pool_info.pPoolSizes = pool_sizes;
-    VK_CHECK(vkCreateDescriptorPool(vk_context->device->logical_device, &pool_info, vk_context->allocator, &this->m_imgui_descriptor_pool));
+    VK_CHECK(vkCreateDescriptorPool(vk_context->device->logical_device, 
+                                    &pool_info, 
+                                    vk_context->allocator, 
+                                    &this->m_imgui_descriptor_pool));
 
     //
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(vk_context->framebuffer_width, vk_context->framebuffer_height);
+    io.DisplaySize = ImVec2(vk_context->swapchain->present_src_images->create_info->extent.width, 
+                            vk_context->swapchain->present_src_images->create_info->extent.height);
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     ImGui::StyleColorsDark();
@@ -93,7 +98,7 @@ void YDeveloperConsole::init(YsVkContext* vk_context,
     io.Fonts->Clear();
     io.Fonts->AddFontFromFileTTF("/System/Library/Fonts/HelveticaNeue.ttc", 16.0f);
 
-    ImGui_ImplGlfw_InitForVulkan((GLFWwindow*)YRendererFrontendManager::instance()->glfwWindow()->glfwWindow(), true);
+    ImGui_ImplGlfw_InitForVulkan(YRendererFrontendManager::instance()->glfwWindow(), true);
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.Instance = vk_context->instance;
     init_info.PhysicalDevice = vk_context->device->physical_device;
@@ -110,19 +115,15 @@ void YDeveloperConsole::init(YsVkContext* vk_context,
     init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     ImGui_ImplVulkan_Init(&init_info);
 
-    this->m_shadow_mapping_descriptor_set = ImGui_ImplVulkan_AddTexture(vk_resource->sampler_linear,
-                                                                        vk_resource->shadow_map_image.individual_views[0],
-                                                                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-    this->m_accumulate_image_descriptor_sets = (VkDescriptorSet*)yCMemoryAllocate(sizeof(VkDescriptorSet) * vk_context->swapchain->image_count);
     this->m_rasterization_image_descriptor_sets = (VkDescriptorSet*)yCMemoryAllocate(sizeof(VkDescriptorSet) * vk_context->swapchain->image_count);
+    this->m_shadow_mapping_descriptor_sets = (VkDescriptorSet*)yCMemoryAllocate(sizeof(VkDescriptorSet) * vk_context->swapchain->image_count);
     for(int i = 0; i < vk_context->swapchain->image_count; ++i) {
-        this->m_accumulate_image_descriptor_sets[i] = ImGui_ImplVulkan_AddTexture(vk_resource->sampler_linear,
-                                                                                  vk_resource->path_tracing_accumulate_image.individual_views[i],
-                                                                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         this->m_rasterization_image_descriptor_sets[i] = ImGui_ImplVulkan_AddTexture(vk_resource->sampler_linear,
-                                                                                     vk_resource->rasterization_color_image.individual_views[i],
+                                                                                     vk_resource->rasterization_color_image->layer_views[i],
                                                                                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        this->m_shadow_mapping_descriptor_sets[i] = ImGui_ImplVulkan_AddTexture(vk_resource->sampler_linear,
+                                                                                vk_resource->shadow_map_image->layer_views[i],
+                                                                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);                                                                                    
     }
 }
 
@@ -163,8 +164,8 @@ void YDeveloperConsole::addLogMessage(int log_level, const std::string& message)
 void YDeveloperConsole::cmdDraw(YsVkCommandUnit* command_unit,
                                 u32 command_buffer_index,
                                 u32 current_frame, 
-                                u32 image_index) {
-    glm::fvec2 window_size = YGlobalInterface::instance()->getMainWindowSize();
+                                u32 current_present_image_index) {
+    glm::fvec2 window_size = glm::fvec2(ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y);
     static double last_time = glfwGetTime();
 
     ImGui_ImplVulkan_NewFrame();
@@ -186,7 +187,26 @@ void YDeveloperConsole::cmdDraw(YsVkCommandUnit* command_unit,
     ImGui::Begin("Performance Monitor");
     {
         ImVec4 yellow = ImVec4(1.0f, 1.0f, 0.0f, 1.0f);
-        std::string str_render_res = std::to_string(this->m_vk_context->framebuffer_width) + " x " + std::to_string(this->m_vk_context->framebuffer_height);
+        YeRendererResolution renderer_resolution = YRendererBackendManager::instance()->rendererResolution();
+        glm::fvec2 renderer_image_size;
+        switch (renderer_resolution){
+            case YeRendererResolution::Original: {
+                renderer_image_size = window_size;
+                break;
+            }
+            case YeRendererResolution::Half: {
+                renderer_image_size = window_size * 0.5f;
+                break;
+            }
+            case YeRendererResolution::Double: {
+                renderer_image_size = window_size * 2.0f;
+                break;
+            }
+            default: {
+                break;
+            }
+        }
+        std::string str_render_res = std::to_string(u32(renderer_image_size.x)) + " x " + std::to_string(u32(renderer_image_size.y));
         ImGui::Text("Render Resolution: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text(str_render_res.c_str());ImGui::PopStyleColor();
         ImGui::Text("Render FPS: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%i", YProfiler::instance()->renderingFPS());ImGui::PopStyleColor();
         ImGui::Text("CPU FPS: ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%i", YProfiler::instance()->cpuFPS());ImGui::PopStyleColor();
@@ -194,26 +214,21 @@ void YDeveloperConsole::cmdDraw(YsVkCommandUnit* command_unit,
         ImGui::Text("Render Frame Time(ms): ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%f", 1000.0f / YProfiler::instance()->renderingFPS());ImGui::PopStyleColor();
         ImGui::Text("CPU Frame Time(ms): ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%f", 1000.0f / YProfiler::instance()->cpuFPS());ImGui::PopStyleColor();
         ImGui::Text("GPU Frame Time(ms): ");ImGui::SameLine();ImGui::PushStyleColor(ImGuiCol_Text, yellow);ImGui::Text("%f", 1000.0f / YProfiler::instance()->gpuFPS());ImGui::PopStyleColor();
-        ImGui::Text("Samples: %u", YRendererBackendManager::instance()->samples());
     }
     ImGui::End();
 
     ImGui::Begin("Intermediate Image", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     {
-        ImGui::Image(u64(this->m_shadow_mapping_descriptor_set),
-                     ImVec2(this->m_vk_resource->shadow_map_image.create_info->extent.width * 0.05f,
-                            this->m_vk_resource->shadow_map_image.create_info->extent.height * 0.05f));
+        ImGui::Image(u64(this->m_shadow_mapping_descriptor_sets[current_frame]),
+                     ImVec2(this->m_vk_resource->shadow_map_image->create_info->extent.width * 0.05f,
+                            this->m_vk_resource->shadow_map_image->create_info->extent.height * 0.05f));
         ImGui::Text("Shadow Map Image");
         ImGui::Dummy(ImVec2(0.0f, 20.0f));
-        ImGui::Image(u64(this->m_rasterization_image_descriptor_sets[image_index]),
-                     ImVec2(this->m_vk_resource->rasterization_color_image.create_info->extent.width * 0.05f,
-                            this->m_vk_resource->rasterization_color_image.create_info->extent.height * 0.05f));
+        ImGui::Image(u64(this->m_rasterization_image_descriptor_sets[current_frame]),
+                     ImVec2(this->m_vk_resource->rasterization_color_image->create_info->extent.width * 0.05f,
+                            this->m_vk_resource->rasterization_color_image->create_info->extent.height * 0.05f));
         ImGui::Text("Rasterization Image");
         ImGui::Dummy(ImVec2(0.0f, 20.0f));
-        ImGui::Image(u64(this->m_accumulate_image_descriptor_sets[image_index]),
-                     ImVec2(this->m_vk_resource->path_tracing_accumulate_image.create_info->extent.width * 0.05f,
-                            this->m_vk_resource->path_tracing_accumulate_image.create_info->extent.height * 0.05f));
-        ImGui::Text("Path Tracing Accumulate Image");
     }
     ImGui::End();
 
@@ -244,8 +259,8 @@ void YDeveloperConsole::cmdDraw(YsVkCommandUnit* command_unit,
                     break;
                 }
             }
-            if(this->m_current_rendering_model_type != changing_rendering_model_event.type) {
-                this->m_current_rendering_model_type = changing_rendering_model_event.type;
+            if(YRendererBackendManager::instance()->getRenderingModel() != changing_rendering_model_event.type) {
+                YRendererBackendManager::instance()->setRenderingModel(changing_rendering_model_event.type);
                 YEventHandlerManager::instance()->pushEvent(changing_rendering_model_event);
             }
         }
@@ -258,6 +273,48 @@ void YDeveloperConsole::cmdDraw(YsVkCommandUnit* command_unit,
                      IM_ARRAYSIZE(this->m_rendering_api_items));
     }
     ImGui::End();
+
+    ImGui::Begin("Path Tracing Settings");
+    {
+        i32 spp = YRendererBackendManager::instance()->getPathTracingSpp();
+        ImGui::InputInt("SPP", &spp, 1, 100, ImGuiInputTextFlags_CharsDecimal);
+        spp = spp < 1 ? 1 : spp;
+        if(spp != YRendererBackendManager::instance()->getPathTracingSpp()) {
+            YsChangingPathTracingSppEvent e;
+            e.spp = spp;
+            YEventHandlerManager::instance()->pushEvent(e);
+        }
+        YRendererBackendManager::instance()->setPathTracingSpp(spp);
+
+        i32 max_depth = YRendererBackendManager::instance()->getPathTracingMaxDepth();
+        ImGui::InputInt("Max Depth", &max_depth, 1, 100, ImGuiInputTextFlags_CharsDecimal);
+        max_depth = max_depth < 1 ? 1 : max_depth;
+        if(max_depth != YRendererBackendManager::instance()->getPathTracingMaxDepth()) {
+            YsChangingPathTracingMaxDepthEvent e;
+            e.max_depth = max_depth;
+            YEventHandlerManager::instance()->pushEvent(e);
+        }
+        YRendererBackendManager::instance()->setPathTracingMaxDepth(max_depth);
+
+        bool enable_bvh_acceleration = YRendererBackendManager::instance()->getPathTracingEnableBvhAcceleration();
+        ImGui::Checkbox("Enable BVH Acceleration", &enable_bvh_acceleration);
+        if(enable_bvh_acceleration != YRendererBackendManager::instance()->getPathTracingEnableBvhAcceleration()) {
+            YsChangingPathTracingEnableBvhAccelerationEvent e;
+            e.enable_bvh_acceleration = enable_bvh_acceleration;
+            YEventHandlerManager::instance()->pushEvent(e);
+        }
+        YRendererBackendManager::instance()->setPathTracingEnableBvhAcceleration(enable_bvh_acceleration);
+
+        bool enable_denoiser = YRendererBackendManager::instance()->getPathTracingEnableDenoiser();
+        ImGui::Checkbox("Enable Denoiser", &enable_denoiser);
+        if(enable_denoiser != YRendererBackendManager::instance()->getPathTracingEnableDenoiser()) {
+            YsChangingPathTracingEnableDenoiserEvent e;
+            e.enable_denoiser = enable_denoiser;
+            YEventHandlerManager::instance()->pushEvent(e);
+        }
+        YRendererBackendManager::instance()->setPathTracingEnableDenoiser(enable_denoiser);
+    }  
+    ImGui::End();  
 
     ImGui::Render();
     ImDrawData* draw_data = ImGui::GetDrawData();

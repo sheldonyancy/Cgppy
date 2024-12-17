@@ -26,6 +26,7 @@
 #include "YVulkanContext.h"
 #include "YLogger.h"
 #include "YCMemoryManager.h"
+#include "YGlobalFunction.h"
 
 #define MAX_VK_GRAPHICS_COMPUTE_COMMAND_UNITS_COUNT 64
 
@@ -205,7 +206,19 @@ static b8 selectPhysicalDevice(YsVkContext* context) {
         YWARN("The selected device does not support timestamp queries!");
     }
 
-    YINFO("Max Push Constants Size: %u", properties.limits.maxPushConstantsSize);
+    YINFO("Max Storage Buffer Size: %.1f MB", properties.limits.maxStorageBufferRange / (1024.0f*1024.0f));
+    YINFO("Max Uniform Buffer Size: %.1f MB", properties.limits.maxUniformBufferRange / (1024.0f*1024.0f));
+    YINFO("Max Push Constants Size: %.1f KB", properties.limits.maxPushConstantsSize / 1024.0f);
+    YINFO("Max Compute Shared Memory Size: %.1f KB", properties.limits.maxComputeSharedMemorySize / 1024.0f);
+    YINFO("Max Compute Work Group Count: X: %u, Y: %u, Z: %u", properties.limits.maxComputeWorkGroupCount[0], 
+                                                               properties.limits.maxComputeWorkGroupCount[1],
+                                                               properties.limits.maxComputeWorkGroupCount[2]);
+    YINFO("Max Compute Work Group Invocations: %u", properties.limits.maxComputeWorkGroupInvocations);
+    YINFO("Max Compute Work Group Size: X: %u, Y: %u, Z: %u", properties.limits.maxComputeWorkGroupSize[0],
+                                                              properties.limits.maxComputeWorkGroupSize[1],
+                                                              properties.limits.maxComputeWorkGroupSize[2]);
+
+    YINFO("Max Bound Descriptor Sets: %u", properties.limits.maxBoundDescriptorSets);
 
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceFeatures(physical_devices[0], &features);

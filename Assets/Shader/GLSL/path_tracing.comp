@@ -1,0 +1,426 @@
+/**
+ * MIT License
+ *
+ * Copyright (c) 2024 Sheldon Yancy
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+#version 460
+
+#extension GL_ARB_separate_shader_objects : enable
+//#extension GL_EXT_debug_printf : enable
+
+#include "define.glsl"
+#include "struct.glsl"
+#include "uniform_buffer_object.glsl"
+#include "stroage_buffer_object.glsl"
+#include "push_constant_object.glsl"
+#include "uniform_sampler_random.glsl"
+#include "uniform_image_path_tracing.glsl"
+
+layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+
+
+void setSeed(in vec2 camera_sensor_pixel_coord) {
+    XORShift_RNG = texture(uniform_random_sampler, camera_sensor_pixel_coord).x;
+}
+float random() {
+    XORShift_RNG ^= XORShift_RNG << 13u;
+    XORShift_RNG ^= XORShift_RNG >> 17u;
+    XORShift_RNG ^= XORShift_RNG << 5u;
+    return float(XORShift_RNG) * 2.3283064e-10;
+}
+
+GLSL_Ray rayGen(out float pdf_ray_gen) {
+    vec2 offset = (vec2(random(), random()) - vec2(0.5)) * 2.0;
+    vec2 uv = (2.0*gl_GlobalInvocationID.xy - ubo.physically_based_camera.resolution + offset) / ubo.physically_based_camera.resolution;
+
+    float distance_x = ubo.physically_based_camera.image_sensor_width * 0.5 * uv.x;
+    float distance_y = ubo.physically_based_camera.image_sensor_height * 0.5 * uv.y;
+    vec3 image_sensor_center = ubo.physically_based_camera.position - ubo.physically_based_camera.focal_length * ubo.physically_based_camera.forward;
+    vec3 sensor_pixel_pos = image_sensor_center + ubo.physically_based_camera.right * distance_x +  ubo.physically_based_camera.up * distance_y;
+
+    GLSL_Ray ray;
+    ray.origin = ubo.physically_based_camera.position;
+    ray.direction = normalize(ubo.physically_based_camera.position - sensor_pixel_pos);
+
+    pdf_ray_gen = 1.0 / pow(dot(ray.direction, ubo.physically_based_camera.forward), 3.0);
+    //pdf_ray_gen = dot(ray.direction, ubo.physically_based_camera.forward) / PI;
+
+    return ray;
+}
+
+bool rayTriangleIntersection(in GLSL_Ray ray, in GLSL_Triangle triangle,
+                             out float t, out float a, out float b) {
+    // Check if the triangle is back-facing
+    if (dot(triangle.normal, ray.direction) >= 0) {
+        return false; // No intersection, triangle is back-facing
+    }
+
+    vec3 edge1 = triangle.p1 - triangle.p0;
+    vec3 edge2 = triangle.p2 - triangle.p0;
+    vec3 pvec = cross(ray.direction, edge2);
+    float det = dot(edge1, pvec);
+
+    if (abs(det) < EPSILON) {
+        return false;  // This ray is parallel to this triangle.
+    }
+
+    float inv_det = 1.0 / det;
+    vec3 tvec = ray.origin - triangle.p0;
+    a = dot(tvec, pvec) * inv_det;
+    if (a < 0.0 || a > 1.0) {
+        return false;
+    }
+
+    vec3 qvec = cross(tvec, edge1);
+    b = dot(ray.direction, qvec) * inv_det;
+    if (b < 0.0 || a + b > 1.0) {
+        return false;
+    }
+
+    t = dot(edge2, qvec) * inv_det;
+
+    return t >= EPSILON;
+}
+
+bool rayAABBIntersection(in GLSL_Ray ray, in GLSL_AABB aabb,
+                         out float t_min, out float t_max) {
+    vec3 t0s = (aabb.min - ray.origin) / ray.direction;
+    vec3 t1s = (aabb.max - ray.origin) / ray.direction;
+
+    vec3 t_min_vec = min(t0s, t1s);
+    vec3 t_max_vec = max(t0s, t1s);
+
+    t_min = max(t_min_vec.x, max(t_min_vec.y, t_min_vec.z));
+    t_max = min(t_max_vec.x, min(t_max_vec.y, t_max_vec.z));
+
+    return t_max > max(t_min, 0.0);
+}
+
+void hitSort(inout GLSL_HitInfo arr[MAX_ARR_SIZE], int size) {
+    for (int i = 1; i < size; i++) {
+        GLSL_HitInfo key = arr[i];
+        int j = i - 1;
+        while (j >= 0 && arr[j].t > key.t) {
+            arr[j + 1] = arr[j];
+            j = j - 1;
+        }
+        arr[j + 1] = key;
+    }
+}
+
+bool directIntersect(in GLSL_Ray ray, inout GLSL_IntersectInfo intersect_info) {
+    float t_nearest = GLSL_INFINITY;
+    for(int i = 0; i < ssbo.vertex_count - 2; i+=3) {
+        GLSL_Triangle triangle;
+        triangle.p0 = ssbo.vertex_position[i].xyz;
+        triangle.p1 = ssbo.vertex_position[i+1].xyz;
+        triangle.p2 = ssbo.vertex_position[i+2].xyz;
+        triangle.normal = ssbo.vertex_normal[i].xyz;
+        float t = 0.0;
+        float a = 0.0;
+        float b = 0.0;
+        bool intersection_triangle = rayTriangleIntersection(ray,
+                                                             triangle,
+                                                             t,
+                                                             a,
+                                                             b);
+
+        if((intersection_triangle) &&
+           (t < RAY_TIME_MAX) &&
+           (t > RAY_TIME_MIN) &&
+           (t < t_nearest)) {
+            intersect_info.hit = true;
+            intersect_info.t = t;
+            intersect_info.hit_pos = ray.origin + t * ray.direction;
+            intersect_info.hit_normal = triangle.normal;
+            intersect_info.dpdu = normalize(triangle.p1 - triangle.p0);
+            intersect_info.dpdv = normalize(cross(intersect_info.hit_normal, intersect_info.dpdu));
+            intersect_info.material_id = ssbo.vertex_material_id[i];
+            intersect_info.entity_id = ssbo.vertex_entity_id[i];
+            t_nearest = t;
+        }
+    }
+
+    return intersect_info.hit;
+}
+
+bool accelerateIntersect(in GLSL_Ray ray, inout GLSL_IntersectInfo intersect_info) {
+    int right_stack[MAX_ARR_SIZE];
+    int right_stack_ptr = 0;
+    int current_bvh_node_index = 0;
+    GLSL_HitInfo bvh_hit_info[MAX_ARR_SIZE];
+    int bvh_hit_info_ptr = 0;
+
+    while(-1 != current_bvh_node_index) {
+        GLSL_BVHNode current_bvh_node = ssbo.bvh_node[current_bvh_node_index];
+        float t_min = 0.0;
+        float t_max = 0.0;
+        bool aabb_intersection = rayAABBIntersection(ray, current_bvh_node.aabb, t_min, t_max);
+        if (aabb_intersection) {
+            bool is_leaf = (-1 == current_bvh_node.left_node_index) && (-1 == current_bvh_node.right_node_index);
+            if (is_leaf) {
+                bvh_hit_info[bvh_hit_info_ptr].t = t_min;
+                bvh_hit_info[bvh_hit_info_ptr].index = current_bvh_node_index;
+                bvh_hit_info_ptr++;
+
+                current_bvh_node_index = (right_stack_ptr > 0) ? right_stack[--right_stack_ptr] : -1;
+            } else {
+                right_stack[right_stack_ptr++] = current_bvh_node.right_node_index;
+                current_bvh_node_index = current_bvh_node.left_node_index;
+            }
+        } else {
+            current_bvh_node_index = (right_stack_ptr > 0) ? right_stack[--right_stack_ptr] : -1;
+        }
+    }
+
+    if(0 == bvh_hit_info_ptr) {
+        return false;
+    }
+
+    hitSort(bvh_hit_info, bvh_hit_info_ptr);
+
+    for(int n = 0; n < bvh_hit_info_ptr; ++n) {
+        GLSL_BVHNode hit_bvh_node = ssbo.bvh_node[bvh_hit_info[n].index];
+        float t_nearest = GLSL_INFINITY;
+        for(int i = hit_bvh_node.vertex_index; i < hit_bvh_node.vertex_index + hit_bvh_node.vertex_count - 2; i+=3) {
+            GLSL_Triangle triangle;
+            triangle.p0 = ssbo.vertex_position[i].xyz;
+            triangle.p1 = ssbo.vertex_position[i+1].xyz;
+            triangle.p2 = ssbo.vertex_position[i+2].xyz;
+            triangle.normal = ssbo.vertex_normal[i].xyz;
+            float t = 0.0;
+            float a = 0.0;
+            float b = 0.0;
+            bool hit_triangle = rayTriangleIntersection(ray,
+                                                        triangle,
+                                                        t,
+                                                        a,
+                                                        b);
+            if((hit_triangle) &&
+               (t < RAY_TIME_MAX) &&
+               (t > RAY_TIME_MIN) &&
+               (t < t_nearest)) {
+                intersect_info.hit = true;
+                intersect_info.t = t;
+                intersect_info.hit_pos = ray.origin + t * ray.direction;
+                intersect_info.hit_normal = ssbo.vertex_normal[i].xyz;
+                intersect_info.dpdu = normalize(triangle.p1 - triangle.p0);
+                intersect_info.dpdv = normalize(cross(intersect_info.hit_normal, intersect_info.dpdu));
+                intersect_info.material_id = ssbo.vertex_material_id[i];
+                intersect_info.entity_id = ssbo.vertex_entity_id[i];
+                t_nearest = t;
+            }
+        }
+
+        if(intersect_info.hit) {
+            break;
+        }
+    }
+
+    return intersect_info.hit;
+}
+
+vec3 worldToLocal(in vec3 v, in vec3 lx, in vec3 ly, in vec3 lz) {
+    return vec3(dot(v, lx), dot(v, ly), dot(v, lz));
+}
+
+vec3 localToWorld(in vec3 v, in vec3 lx, in vec3 ly, in vec3 lz) {
+    return vec3(dot(v, vec3(lx.x, ly.x, lz.x)), dot(v, vec3(lx.y, ly.y, lz.y)), dot(v, vec3(lx.z, ly.z, lz.z)));
+}
+
+vec3 BRDF(in GLSL_Material material) {
+    return material.kd * PI_INV;
+}
+
+vec3 sampleTriangle(in float u, in float v, in GLSL_Triangle triangle, out float pdf_triangle) {
+    float a = 1.0 - u;
+    float b = u * (1.0 - v);
+    float c = u * v;
+    vec3 sampled_point = a * triangle.p0 + b * triangle.p1 + c * triangle.p2;
+
+    float area = 0.5 * length(cross(triangle.p1 - triangle.p0, triangle.p2 - triangle.p0));
+    pdf_triangle = 1.0 / area;
+
+    return sampled_point;
+}
+
+vec3 sampleQuad(in float u, in float v, in GLSL_Quad quad, out float pdf_quad) {
+    vec3 v1 = quad.p1 - quad.p0;
+    vec3 v2 = quad.p3 - quad.p0;
+    vec3 sampled_point = quad.p0 + u * v1 + v * v2;
+
+    float x_length = distance(quad.p0, quad.p1);
+    float y_length = distance(quad.p0, quad.p3);
+
+    pdf_quad = 1.0 / (x_length * y_length);
+
+    return sampled_point;
+}
+
+vec3 sampleCosineHemisphere(in float u, in float v, out float pdf_hemisphere) {
+    float theta = 0.5 * acos(clamp(1.0 - 2.0 * u, -1.0, 1.0));
+    float phi = 2.0 * PI * v;
+    pdf_hemisphere = cos(theta) * PI_INV;
+    return vec3(cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));
+}
+
+vec3 sampleBRDF(in GLSL_Material material, out vec3 wi, out float pdf_brdf) {
+    wi = sampleCosineHemisphere(random(), random(), pdf_brdf);
+    return material.kd * PI_INV;
+}
+
+bool sampleLight(in GLSL_IntersectInfo intersect_object_info, inout vec3 wi, out float pdf_light) {
+    GLSL_Quad light_quad;
+    light_quad.p0 = ubo.light.p0;
+    light_quad.p1 = ubo.light.p1;
+    light_quad.p2 = ubo.light.p2;
+    light_quad.p3 = ubo.light.p3;
+
+    float pdf_quad;
+    vec3 sampled_pos = sampleQuad(random(), random(), light_quad, pdf_quad);
+
+    wi = normalize(sampled_pos - intersect_object_info.hit_pos);
+    if(dot(wi, intersect_object_info.hit_normal) < 0.0) {
+        return false;
+    }
+
+    GLSL_Ray ray;
+    ray.origin = intersect_object_info.hit_pos;
+    ray.direction = wi;
+
+    GLSL_IntersectInfo intersect_light_info;
+    intersect_light_info.hit = false;
+    intersect_light_info.t = 0;
+    intersect_light_info.hit_pos = vec3(0.0);
+    intersect_light_info.hit_normal = vec3(0.0);
+    intersect_light_info.dpdu = vec3(0.0);
+    intersect_light_info.dpdv = vec3(0.0);
+    intersect_light_info.material_id = -1;
+    intersect_light_info.entity_id = -1;
+    if(directIntersect(ray, intersect_light_info)) {
+        if(intersect_light_info.entity_id == ubo.light.entity_id) {
+            float r = intersect_light_info.t;
+            float cos_term = abs(dot(-wi, intersect_light_info.hit_normal));
+            pdf_light = r*r / cos_term * pdf_quad;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+vec3 computeRadiance(in GLSL_Ray ray_in) {
+    //debugPrintfEXT("Frag");
+
+    GLSL_Ray ray = ray_in;
+    float russian_roulette_prob = 1.0;
+    vec3 color = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+
+    for(int i = 0; i < ubo.path_tracing_max_depth; ++i) {
+        if(random() >= russian_roulette_prob) {
+            break;
+        }
+        throughput /= russian_roulette_prob;
+
+        GLSL_IntersectInfo intersect_object_info;
+        intersect_object_info.hit = false;
+        intersect_object_info.t = 0;
+        intersect_object_info.hit_pos = vec3(0.0);
+        intersect_object_info.hit_normal = vec3(0.0);
+        intersect_object_info.dpdu = vec3(0.0);
+        intersect_object_info.dpdv = vec3(0.0);
+        intersect_object_info.material_id = -1;
+        intersect_object_info.entity_id = -1;
+        if(directIntersect(ray, intersect_object_info)) {
+            GLSL_Material hit_material = ssbo.materials[intersect_object_info.material_id];
+
+            //
+            if((0 == i) && (intersect_object_info.entity_id == ubo.light.entity_id)) {
+                color = hit_material.le;
+                break;
+            }
+
+            //
+            vec3 wi_light;
+            float pdf_light;
+            if(sampleLight(intersect_object_info, wi_light, pdf_light)) {
+                vec3 wi_light_local = worldToLocal(wi_light,
+                                                   intersect_object_info.dpdu,
+                                                   intersect_object_info.hit_normal,
+                                                   intersect_object_info.dpdv);
+                vec3 brdf = BRDF(hit_material);
+                float cos_term = abs(wi_light_local.y);
+                if(pdf_light > 0.01) {
+                    color += throughput * brdf * cos_term * ubo.light.le / pdf_light;
+                }
+            }
+
+            //
+            float pdf_brdf;
+            vec3 wi_local;
+            vec3 brdf = sampleBRDF(hit_material, wi_local, pdf_brdf);
+            if(pdf_brdf == 0.0) {
+                break;
+            }
+
+            //
+            float cos_term = abs(wi_local.y);
+            throughput *= brdf * cos_term / pdf_brdf;
+
+            //
+            russian_roulette_prob = min(max(max(throughput.x, throughput.y), throughput.z), 1.0);
+
+            //
+            ray.origin = intersect_object_info.hit_pos;
+            ray.direction = normalize(localToWorld(wi_local,
+                                                   intersect_object_info.dpdu,
+                                                   intersect_object_info.hit_normal,
+                                                   intersect_object_info.dpdv));
+        } else {
+            break;
+        }
+    }
+
+    return color;
+}
+
+void main() {
+    vec2 camera_sensor_pixel_coord = vec2(float(gl_GlobalInvocationID.x) / ubo.physically_based_camera.resolution.x, 
+                                          float(gl_GlobalInvocationID.y) / ubo.physically_based_camera.resolution.y);
+    setSeed(camera_sensor_pixel_coord);
+
+    vec3 accmulate_value = vec3(0.0);
+    for (uint i = 0; i < ubo.path_tracing_spp; ++i) {
+        float pdf_ray_gen = 1.0;
+        GLSL_Ray ray = rayGen(pdf_ray_gen);
+        vec3 radiance = computeRadiance(ray);
+
+        float cos_term = dot(ubo.physically_based_camera.forward, ray.direction);
+
+        accmulate_value += radiance / pdf_ray_gen * cos_term;
+    }
+
+    vec4 out_color = vec4(pow(accmulate_value / ubo.path_tracing_spp, vec3(0.4545)), 1.0);
+    ivec2 out_coord = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    imageStore(uniform_path_tracing_image, out_coord, out_color);
+}

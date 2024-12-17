@@ -56,3 +56,7 @@ u32 yPushConstantSize() {
     u32 size = sizeof(GLSL_PushConstantObject);
     return size;
 }
+
+f32 yRoundToOneDecimal(f32 value){
+    return floor(value * 10 + 0.5) / 10;
+}

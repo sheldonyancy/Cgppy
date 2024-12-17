@@ -22,8 +22,10 @@
  * SOFTWARE.
  */
 
-layout(std140, set = 0, binding = 0) uniform UniformBufferObject{
+layout(std140, set = 1, binding = 0) uniform UniformBufferObject{
     int rendering_model;
+    int path_tracing_spp;
+    int path_tracing_max_depth;
     mat4 model_matrix;
     GLSL_RasterizationCamera rasterization_camera;
     GLSL_PhysicallyBasedCamera physically_based_camera;

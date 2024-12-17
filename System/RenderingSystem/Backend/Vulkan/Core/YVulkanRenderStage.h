@@ -34,28 +34,6 @@
 extern "C" {
 #endif
 
-
-typedef struct YsSubpassConfig {
-    u8 reference_count;
-    VkAttachmentReference* attachment_references;
-
-    VkSubpassDescription subpass_description;
-} YsSubpassConfig;
-
-typedef struct YsVkRenderStageCreateInfo {
-    u8 attachment_count;
-    VkAttachmentDescription* attachment_descriptions;
-
-    u8 subpass_count;
-    YsSubpassConfig* subpass_configs;
-
-    u8 subpass_dependency_count;
-    VkSubpassDependency* subpass_dependencies;
-
-    u8 framebuffer_count;
-    VkFramebufferCreateInfo* framebuffer_create_info;
-} YsVkRenderStageCreateInfo;
-
 typedef struct YsVkRenderStage {
     b8 (*create)(struct YsVkContext* context,
                  YsVkRenderStageCreateInfo* create_info,

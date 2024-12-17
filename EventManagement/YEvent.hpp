@@ -36,6 +36,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "YDefines.h"
+#include "YRendererBackendManager.hpp"
+
+
 enum class YeKeyEventType : unsigned short {
     KEY_DOWN,
     KEY_UP
@@ -82,15 +86,34 @@ struct YsUpdateSceneEvent {
     int unknow;
 };
 
-enum class YeRenderingModelType : unsigned char {
-    PathTracing,
-    Rasterization,
-};
 struct YsChangingRenderingModelEvent {
     YeRenderingModelType type;
 };
 
-using YsEvent = std::variant<YsChangingRenderingModelEvent, YsUpdateSceneEvent, YsKeyEvent, YsMouseEvent>;
+struct YsChangingPathTracingSppEvent {
+    u32 spp;
+};
+
+struct YsChangingPathTracingMaxDepthEvent { 
+    u32 max_depth;
+};
+
+struct YsChangingPathTracingEnableBvhAccelerationEvent {
+    u8 enable_bvh_acceleration;
+};
+
+struct YsChangingPathTracingEnableDenoiserEvent {
+    u8 enable_denoiser;
+};
+
+using YsEvent = std::variant<YsChangingRenderingModelEvent,
+                             YsChangingPathTracingSppEvent,
+                             YsChangingPathTracingMaxDepthEvent,
+                             YsChangingPathTracingEnableBvhAccelerationEvent,
+                             YsChangingPathTracingEnableDenoiserEvent,
+                             YsUpdateSceneEvent, 
+                             YsKeyEvent, 
+                             YsMouseEvent>;
 
 
 #endif //CGPPY_YEVENT_HPP

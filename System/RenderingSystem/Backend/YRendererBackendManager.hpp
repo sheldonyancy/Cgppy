@@ -34,6 +34,25 @@ struct GLFWwindow;
 #include <map>
 
 
+enum class YeRendererBackendApi : unsigned char {
+    VULKAN,
+    METAL,
+    DIRECTX12,
+    OPENGL,
+    CPU
+};
+
+enum class YeRenderingModelType : unsigned char {
+    PathTracing,
+    Rasterization
+};
+
+enum class YeRendererResolution : unsigned char {
+    Original,
+    Half,
+    Double
+};
+
 class YRendererBackendManager {
 public:
     static YRendererBackendManager* instance();
@@ -42,7 +61,18 @@ public:
 
     inline YRendererBackend* backend() {return this->m_renderer_backend.find(this->m_current_renderer_backend_api)->second.get();}
 
-    u32 samples();
+    inline YeRendererResolution rendererResolution() {return this->m_renderer_resolution;}
+
+    inline YeRenderingModelType getRenderingModel() {return this->m_rendering_model;}
+    inline void setRenderingModel(YeRenderingModelType value) {this->m_rendering_model = value;}
+    inline u32 getPathTracingSpp() {return this->m_path_tracing_spp;}
+    inline void setPathTracingSpp(const u32& value) {this->m_path_tracing_spp = value;}
+    inline u32 getPathTracingMaxDepth() {return this->m_path_tracing_max_depth;}    
+    inline void setPathTracingMaxDepth(const u32& value) {this->m_path_tracing_max_depth = value;}                                 
+    inline u8 getPathTracingEnableBvhAcceleration() {return this->m_path_tracing_enable_bvh_acceleration;}
+    inline void setPathTracingEnableBvhAcceleration(b8 value) {this->m_path_tracing_enable_bvh_acceleration = value;}
+    inline u8 getPathTracingEnableDenoiser() {return this->m_path_tracing_enable_denoiser;}
+    inline void setPathTracingEnableDenoiser(b8 value) {this->m_path_tracing_enable_denoiser = value;}
 
 private:
     YRendererBackendManager();
@@ -51,6 +81,16 @@ private:
 private:
     YeRendererBackendApi m_current_renderer_backend_api;
     std::map<YeRendererBackendApi, std::unique_ptr<YRendererBackend>> m_renderer_backend;
+
+    YeRendererResolution m_renderer_resolution;
+
+    //
+    YeRenderingModelType m_rendering_model = YeRenderingModelType::PathTracing;
+
+    u32 m_path_tracing_spp = 1;
+    u32 m_path_tracing_max_depth = 100;                                 
+    u8 m_path_tracing_enable_bvh_acceleration = false;
+    u8 m_path_tracing_enable_denoiser = false;
 };
 
 

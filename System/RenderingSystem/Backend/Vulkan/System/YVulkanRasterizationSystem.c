@@ -29,6 +29,8 @@
 #include "YVulkanContext.h"
 #include "YVulkanDevice.h"
 #include "YVulkanResource.h"
+#include "YVulkanImage.h"
+#include "YVulkanBuffer.h"
 #include "YLogger.h"
 #include "YCMemoryManager.h"
 #include "YAssets.h"
@@ -36,8 +38,8 @@
 
 
 static b8 initialize(YsVkContext* context,
-                                        YsVkResources* resources,
-                                        YsVkRasterizationSystem* rasterization_system) {
+                     YsVkResources* resources,
+                     YsVkRasterizationSystem* rasterization_system) {
     // Render Stage
     YsVkRenderStageCreateInfo* render_stage_create_info = yCMemoryAllocate(sizeof(YsVkRenderStageCreateInfo));
     render_stage_create_info->attachment_count = 2;
@@ -74,13 +76,13 @@ static b8 initialize(YsVkContext* context,
     render_stage_create_info->framebuffer_create_info = yCMemoryAllocate(sizeof(VkFramebufferCreateInfo) * render_stage_create_info->framebuffer_count);
     for(int i = 0; i < render_stage_create_info->framebuffer_count; ++i) {
         VkImageView* image_views = yCMemoryAllocate(sizeof(VkImageView) * render_stage_create_info->attachment_count);
-        image_views[0] = resources->rasterization_color_image.individual_views[i];
-        image_views[1] = resources->rasterization_depth_image.individual_views[i];
+        image_views[0] = resources->rasterization_color_image->layer_views[i];
+        image_views[1] = resources->rasterization_depth_image->layer_views[i];
         render_stage_create_info->framebuffer_create_info[i].sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         render_stage_create_info->framebuffer_create_info[i].attachmentCount = render_stage_create_info->attachment_count;
         render_stage_create_info->framebuffer_create_info[i].pAttachments = image_views;
-        render_stage_create_info->framebuffer_create_info[i].width = resources->rasterization_color_image.create_info->extent.width;
-        render_stage_create_info->framebuffer_create_info[i].height = resources->rasterization_color_image.create_info->extent.height;
+        render_stage_create_info->framebuffer_create_info[i].width = resources->rasterization_color_image->create_info->extent.width;
+        render_stage_create_info->framebuffer_create_info[i].height = resources->rasterization_color_image->create_info->extent.height;
         render_stage_create_info->framebuffer_create_info[i].layers = 1;
     }
     rasterization_system->render_stage = yVkAllocateRenderStageObject();
@@ -104,6 +106,7 @@ static b8 initialize(YsVkContext* context,
 
     //
     YsVkPipelineConfig* rasterization_pipeline_config = yCMemoryAllocate(sizeof(YsVkPipelineConfig));
+    rasterization_pipeline_config->pipeline_type = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     rasterization_pipeline_config->shader_config.shader_stage_config_count = 2;
     rasterization_pipeline_config->shader_config.shader_stage_config[0].stage_flag = VK_SHADER_STAGE_VERTEX_BIT;
     rasterization_pipeline_config->shader_config.shader_stage_config[0].source_length = getSpvCodeSize(Rasterization_Vert);
@@ -113,23 +116,23 @@ static b8 initialize(YsVkContext* context,
     rasterization_pipeline_config->shader_config.shader_stage_config[1].source = getSpvCode(Rasterization_Frag);
     rasterization_pipeline_config->render_stage = rasterization_system->render_stage;
     rasterization_pipeline_config->vertex_input_info = &pipeline_vertex_info;
-    rasterization_pipeline_config->descriptor_set_layout_count = 3;
-    rasterization_pipeline_config->descriptor_set_layouts = (VkDescriptorSetLayout*)yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * rasterization_pipeline_config->descriptor_set_layout_count);
-    rasterization_pipeline_config->descriptor_set_layouts[0] = resources->ubo_descriptor->descriptor_set_layout;
-    rasterization_pipeline_config->descriptor_set_layouts[1] = resources->ssbo_descriptor->descriptor_set_layout;
-    rasterization_pipeline_config->descriptor_set_layouts[2] = resources->image_descriptor->descriptor_set_layout;
+    rasterization_pipeline_config->descriptor_count = 3;
+    rasterization_pipeline_config->descriptors = (YsVkDescriptor*)yCMemoryAllocate(sizeof(YsVkDescriptor) * rasterization_pipeline_config->descriptor_count);
+    rasterization_pipeline_config->descriptors[0] = resources->ubo_descriptor;
+    rasterization_pipeline_config->descriptors[1] = resources->ssbo_descriptor;
+    rasterization_pipeline_config->descriptors[2] = resources->shadow_map_image_descriptor;
     rasterization_pipeline_config->push_constant_range_count = resources->push_constant_range_count;
     rasterization_pipeline_config->push_constant_range = resources->push_constant_range;
     rasterization_pipeline_config->viewport.x = 0.0f;
     rasterization_pipeline_config->viewport.y = 0.0f;
-    rasterization_pipeline_config->viewport.width = context->framebuffer_width;
-    rasterization_pipeline_config->viewport.height = context->framebuffer_height;
+    rasterization_pipeline_config->viewport.width = resources->rasterization_color_image->create_info->extent.width;
+    rasterization_pipeline_config->viewport.height = resources->rasterization_color_image->create_info->extent.height;
     rasterization_pipeline_config->viewport.minDepth = 0.0f;
     rasterization_pipeline_config->viewport.maxDepth = 1.0f;
     rasterization_pipeline_config->scissor.offset.x = 0;
     rasterization_pipeline_config->scissor.offset.y = 0;
-    rasterization_pipeline_config->scissor.extent.width = context->framebuffer_width;
-    rasterization_pipeline_config->scissor.extent.height = context->framebuffer_height;
+    rasterization_pipeline_config->scissor.extent.width = resources->rasterization_color_image->create_info->extent.width;
+    rasterization_pipeline_config->scissor.extent.height = resources->rasterization_color_image->create_info->extent.height;
     rasterization_system->pipeline = yVkAllocatePipelineObject();
     if (!rasterization_system->pipeline->create(context,
                                                 rasterization_pipeline_config,
@@ -155,24 +158,10 @@ static void cmdDrawCall(YsVkContext* context,
                         YsVkCommandUnit* command_unit,
                         u32 command_buffer_index,
                         YsVkResources* resources,
-                        u32 image_index,
+                        u32 current_present_image_index,
                         u32 current_frame,
                         void* push_constant_data,
                         YsVkRasterizationSystem* rasterization_system) {
-    VkViewport viewport;
-    viewport.x = 0.0f;
-    viewport.y = 0;
-    viewport.width = (f32)context->framebuffer_width;
-    viewport.height = (f32)context->framebuffer_height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor;
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = context->framebuffer_width;
-    scissor.extent.height = context->framebuffer_height;
-
     VkClearValue clear_values[2];
     clear_values[0].color.float32[0] = 0.0f;
     clear_values[0].color.float32[1] = 0.0f;
@@ -181,13 +170,13 @@ static void cmdDrawCall(YsVkContext* context,
     clear_values[1].depthStencil.depth = 1.0f;
     clear_values[1].depthStencil.stencil = 0;
 
-    vkCmdSetViewport(command_unit->command_buffers[command_buffer_index], 0, 1, &viewport);
-    vkCmdSetScissor(command_unit->command_buffers[command_buffer_index], 0, 1, &scissor);
+    vkCmdSetViewport(command_unit->command_buffers[command_buffer_index], 0, 1, &rasterization_system->pipeline->config->viewport);
+    vkCmdSetScissor(command_unit->command_buffers[command_buffer_index], 0, 1, &rasterization_system->pipeline->config->scissor);
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     render_pass_begin_info.renderPass = rasterization_system->render_stage->render_pass_handle;
     render_pass_begin_info.framebuffer = rasterization_system->render_stage->framebuffers[current_frame];
-    render_pass_begin_info.renderArea = scissor;
+    render_pass_begin_info.renderArea = rasterization_system->pipeline->config->scissor;
     render_pass_begin_info.clearValueCount = rasterization_system->render_stage->create_info->attachment_count;
     render_pass_begin_info.pClearValues = clear_values;
     vkCmdBeginRenderPass(command_unit->command_buffers[command_buffer_index], 
@@ -208,21 +197,24 @@ static void cmdDrawCall(YsVkContext* context,
                            vertex_buffers,
                            vertex_offsets);
 
-    VkDescriptorSet descriptor_sets[3] = {resources->ubo_descriptor->descriptor_sets[image_index],
-                                          resources->ssbo_descriptor->descriptor_sets[image_index],
-                                          resources->image_descriptor->descriptor_sets[image_index]};
-    vkCmdBindDescriptorSets(command_unit->command_buffers[command_buffer_index],
-                            VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            rasterization_system->pipeline->pipeline_layout,
-                            resources->ubo_descriptor->first_set,
-                            3,
-                            descriptor_sets,
-                            0,
-                            NULL);                                                   
+    for(int i = 0; i < rasterization_system->pipeline->config->descriptor_count; ++i) {
+        const VkDescriptorSet* p_descriptor_set = rasterization_system->pipeline->config->descriptors[i].is_single_descriptor_set ?
+                                                  &rasterization_system->pipeline->config->descriptors[i].descriptor_sets[0] :
+                                                  &rasterization_system->pipeline->config->descriptors[i].descriptor_sets[current_frame];                     
 
+        vkCmdBindDescriptorSets(command_unit->command_buffers[command_buffer_index],
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                rasterization_system->pipeline->pipeline_layout,
+                                rasterization_system->pipeline->config->descriptors[i].set,
+                                1,
+                                p_descriptor_set,
+                                0,
+                                NULL); 
+    }
+                                                      
     vkCmdPushConstants(command_unit->command_buffers[command_buffer_index],
                        rasterization_system->pipeline->pipeline_layout,
-                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
                        0,
                        yPushConstantSize(),
                        push_constant_data);

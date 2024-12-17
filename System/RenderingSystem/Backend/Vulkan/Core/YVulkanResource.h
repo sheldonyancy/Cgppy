@@ -26,9 +26,7 @@
 #define CGPPY_YVULKANRESOURCE_H
 
 
-#include "YDefines.h"
 #include "YVulkanTypes.h"
-
 
 
 #ifdef __cplusplus
@@ -36,45 +34,30 @@ extern "C" {
 #endif
 
 
-typedef struct YsVkBuffer {
-    u64 total_size;
-    VkBuffer handle;
-    VkBufferUsageFlagBits usage;
-    b8 is_locked;
-    VkDeviceMemory memory;
-    i32 memory_index;
-    u32 memory_property_flags;
-} YsVkBuffer;
+struct YsVkResourcesImageSize {
+    u32 rasterization_image_width;
+    u32 rasterization_image_height;
 
-typedef struct YsVkImage {
-    VkImageCreateInfo* create_info;
+    u32 shadow_map_image_width;
+    u32 shadow_map_image_height;
 
-    VkImage handle;
+    u32 random_image_width;
+    u32 random_image_height;
 
-    VkDeviceMemory memory;
-
-    VkImageView* individual_views;
-    VkImageView common_view;
-
-    VkMemoryRequirements memory_requirements;
-    VkMemoryPropertyFlags memory_flags;
-} YsVkImage;
-
-typedef struct YsVkDescription {
-    u32 first_set;
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkDescriptorPool descriptor_pool;
-    VkDescriptorSet* descriptor_sets;
-} YsVkDescription;
+    u32 path_tracing_image_width;
+    u32 path_tracing_image_height;
+};
 
 typedef struct YsVkResources {
     //
-    void (*initialize)(struct YsVkContext* context,
-                       struct YsVkResources* resource);
+    void (*initialize)(struct YsVkContext* context, 
+                       struct YsVkResources* resource,
+                       struct YsVkResourcesImageSize image_size);
 
+    // Vertex
     void (*createVertexInputBuffer)(struct YsVkContext* context,
-                                    struct YsVkResources* resource,
-                                    u32 vertex_count);
+                                   struct YsVkResources* resource,
+                                   u32 vertex_count);
 
     void (*updateVertexInputBuffer)(struct YsVkContext* context,
                                     struct YsVkResources* resource,
@@ -82,146 +65,68 @@ typedef struct YsVkResources {
                                     void* vertex_position_data,
                                     void* vertex_normal_data,
                                     void* vertex_material_id_data);
+    // SSBO
+    void (*createSsbo)(struct YsVkContext* context,
+                       struct YsVkResources* resource,
+                       u32 data_size);
 
+    void (*updateSsboBuffer)(struct YsVkContext* context,
+                             struct YsVkResources* resource,
+                             struct YsVkCommandUnit* command_unit,
+                             void* data);
+
+    // UBO
     void (*updateUboBuffer)(struct YsVkContext* context,
                             struct YsVkResources* resource,
                             void* data);
 
-    void (*createSsboBuffer)(struct YsVkContext* context,
-                             struct YsVkResources* resource,
-                             u32 data_size);
-
-    void (*updateSsboBuffer)(struct YsVkContext* context,
-                             struct YsVkResources* resource,
-                             void* data);
-
-    void (*updateSsboDescriptorSets)(struct YsVkContext* context,
-                                      struct YsVkResources* resource,
-                                      struct YsVkRenderingSystem* rendering_system,
-                                      u32 image_index);
-
-    void (*updateUboDescriptorSets)(struct YsVkContext* context,
-                                      struct YsVkResources* resource,
-                                      struct YsVkRenderingSystem* rendering_system,
-                                      u32 image_index);
-
-    void (*updateImageDescriptorSets)(struct YsVkContext* context,
-                                      struct YsVkResources* resource,
-                                      struct YsVkRenderingSystem* rendering_system,
-                                      u32 image_index);
-
-    void (*updateRandomImage)(struct YsVkContext* context,
-                              struct YsVkResources* resource,
-                              struct YsVkCommandUnit* command_unit,
-                              vec2 resolution);
-
-    b8 (*bufferCreate)(struct YsVkContext* context,
-                       u64 size,
-                       VkBufferUsageFlagBits usage,
-                       u32 memory_property_flags,
-                       b8 bind_on_create,
-                       YsVkBuffer* out_buffer);
-
-    void (*bufferDestroy)(struct YsVkContext* context, YsVkBuffer* buffer);
-
-    void (*bufferBind)(struct YsVkContext* context,
-                       YsVkBuffer* buffer,
-                       u64 offset);
-
-    void (*bufferLoadDataRange)(struct YsVkContext* context,
-                                struct YsVkCommandUnit* command_unit,
-                                VkFence fence,
-                                YsVkBuffer* buffer,
-                                u64 offset,
-                                void* data);
-
-    void (*bufferCopyToBuffer)(struct YsVkContext* context,
-                               struct YsVkCommandUnit* command_unit,
-                               VkFence fence,
-                               VkBuffer source,
-                               u64 source_offset,
-                               VkBuffer dest,
-                               u64 dest_offset,
-                               u64 size);
-
-    void (*bufferCopyToImage)(struct YsVkContext* context,
-                              struct YsVkCommandUnit* command_unit,
-                              VkFence fence,
-                              YsVkBuffer* buffer,
-                              struct YsVkImage* image);
-
-    void (*imageCreate)(struct YsVkContext* context,
-                        VkImageCreateInfo* create_info,
-                        VkMemoryPropertyFlags memory_flags,
-                        b8 create_individual_views,
-                        b8 create_common_view,
-                        VkImageAspectFlags view_aspect_flags,
-                        YsVkImage* out_image);
-
-    void (*transitionImageLayout)(VkCommandBuffer command_buffer,
-                                  YsVkImage* image,
-                                  u32 base_array_layer,
-                                  u32 layer_count,
-                                  VkImageLayout old_layout,
-                                  VkImageLayout new_layout,
-                                  VkAccessFlags src_access_mask,
-                                  VkAccessFlags dst_access_mask,
-                                  uint32_t src_queue_family_index,
-                                  uint32_t dst_queue_family_index,
-                                  VkPipelineStageFlags src_stage_mask,
-                                  VkPipelineStageFlags dst_stage_mask);
-
-    void (*imageClear)(struct YsVkContext* context,
-                       struct YsVkCommandUnit* command_unit,
-                       YsVkImage* image,
-                       u32 base_array_layer,
-                       u32 layer_count);
-
-    void (*imageDestroy)(struct YsVkContext* context, YsVkImage* image);
-
-    void (*saveImageToPng)(struct YsVkContext* context,
-                           struct YsVkResources* resource,
-                           YsVkImage* image,
-                           struct YsVkCommandUnit* command_unit,
-                           const char* output_png_file);
-
-    //
+    // Vertex
     u32 current_draw_vertex_count;
 
+    struct YsVkBuffer* vertex_input_position_buffer;
     VkVertexInputBindingDescription vertex_position_binding_description;
     VkVertexInputAttributeDescription vertex_position_attribute_description;
-    struct YsVkBuffer* vertex_input_position_buffer;
 
+    struct YsVkBuffer* vertex_input_normal_buffer;
     VkVertexInputBindingDescription vertex_normal_binding_description;
     VkVertexInputAttributeDescription vertex_normal_attribute_description;
-    struct YsVkBuffer* vertex_input_normal_buffer;
 
+    struct YsVkBuffer* vertex_input_material_id_buffer;
     VkVertexInputBindingDescription vertex_material_id_binding_description;
     VkVertexInputAttributeDescription vertex_material_id_attribute_description;
-    struct YsVkBuffer* vertex_input_material_id_buffer;
 
-    //
-    YsVkDescription* ubo_descriptor;
-    struct YsVkBuffer* ubo_buffer;
-
-    YsVkDescription* ssbo_descriptor;
+    // SSBO
     struct YsVkBuffer* ssbo_buffer;
+    YsVkDescriptor ssbo_descriptor;
 
+    // UBO
+    struct YsVkBuffer* ubo_buffer;
+    YsVkDescriptor ubo_descriptor;
+    
+    // Push Constant
     u32 push_constant_range_count;
     VkPushConstantRange* push_constant_range;
 
-    YsVkDescription* image_descriptor;
-    YsVkImage rasterization_color_image;
-    YsVkImage rasterization_depth_image;
-    YsVkImage shadow_map_image;
-    YsVkImage path_tracing_random_image;
-    YsVkImage path_tracing_accumulate_image;
+    // Image
+    struct YsVkImage* rasterization_color_image;
+    YsVkDescriptor rasterization_color_image_descriptor;
 
-    //
+    struct YsVkImage* rasterization_depth_image;
+
+    struct YsVkImage* shadow_map_image;
+    YsVkDescriptor shadow_map_image_descriptor;
+
+    struct YsVkImage* random_image;
+    YsVkDescriptor random_image_descriptor;
+
+    struct YsVkImage* path_tracing_image;
+    YsVkDescriptor path_tracing_image_compute_storage_descriptor;
+    YsVkDescriptor path_tracing_image_fragment_sampled_descriptor;
+
+    // Sampler
     VkSampler sampler_linear;
     VkSampler sampler_nearest;
 } YsVkResources;
-
 YsVkResources* yVkAllocateResourcesObject();
 
 

@@ -34,47 +34,6 @@
 extern "C" {
 #endif
 
-
-typedef struct YsVkShaderStageConfig {
-    VkShaderStageFlagBits stage_flag;
-    u32 source_length;
-    u32* source;
-} YsVkShaderStageConfig;
-
-typedef struct YsVkShaderStage {
-    VkShaderModuleCreateInfo create_info;
-    VkShaderModule handle;
-    VkPipelineShaderStageCreateInfo shader_stage_create_info;
-} YsVkShaderStage;
-
-typedef struct YsVkShaderConfig {
-    u8 shader_stage_config_count;
-    YsVkShaderStageConfig shader_stage_config[VULKAN_SHADER_MAX_STAGES];
-} YsVkShaderConfig;
-
-typedef struct YsVkShader {
-    u32 id;
-    u8 stage_count;
-    YsVkShaderStage* stages;
-} YsVkShader;
-
-typedef struct YsVkPipelineConfig {
-    YsVkShaderConfig shader_config;
-
-    struct YsVkRenderStage* render_stage;
-
-    VkViewport viewport;
-    VkRect2D scissor;
-
-    VkPipelineVertexInputStateCreateInfo* vertex_input_info;
-
-    u32 descriptor_set_layout_count;
-    VkDescriptorSetLayout* descriptor_set_layouts;
-
-    u32 push_constant_range_count;
-    VkPushConstantRange* push_constant_range;
-} YsVkPipelineConfig;
-
 typedef struct YsVkPipeline {
     b8 (*create)(struct YsVkContext* context,
                          YsVkPipelineConfig* config,

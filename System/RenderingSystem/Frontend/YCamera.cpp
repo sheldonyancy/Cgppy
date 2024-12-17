@@ -25,6 +25,7 @@
 #include "YCamera.hpp"
 #include "YSceneManager.hpp"
 #include "YGlobalInterface.hpp"
+#include "YRendererFrontendManager.hpp"
 
 
 YCamera::YCamera() {
@@ -65,7 +66,7 @@ void YCamera::setUpDirection(const glm::fvec3& up_direction) {
 }
 
 void YCamera::updateProjectionMatrix() {
-    glm::fvec2 main_window_size = YGlobalInterface::instance()->getMainWindowSize();
+    glm::fvec2 main_window_size = YRendererFrontendManager::instance()->mainWindowSize();
     switch (this->m_projection_type) {
         case YeProjectionType::ORTHOGONAL:{
             glm::fvec2 delta = main_window_size / glm::fvec2(fmax(main_window_size.x, main_window_size.y));

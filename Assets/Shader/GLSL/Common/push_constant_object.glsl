@@ -23,9 +23,7 @@
  */
 
 layout(std430, push_constant) uniform PushConstantObject {
-    int accumulate_image_index;
-    float total_samples;
-    float frame_samples[3];
+    int current_present_image_index;
     int current_frame;
 } push_constant_object;
 

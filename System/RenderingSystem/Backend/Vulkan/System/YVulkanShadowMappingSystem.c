@@ -28,6 +28,8 @@
 #include "YVulkanContext.h"
 #include "YVulkanDevice.h"
 #include "YVulkanResource.h"
+#include "YVulkanImage.h"
+#include "YVulkanBuffer.h"
 #include "YLogger.h"
 #include "YCMemoryManager.h"
 #include "YAssets.h"
@@ -56,14 +58,16 @@ static b8 initialize(YsVkContext* context,
     render_stage_create_info->subpass_configs[0].attachment_references[0].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     render_stage_create_info->subpass_configs[0].subpass_description.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     render_stage_create_info->subpass_configs[0].subpass_description.pDepthStencilAttachment = &render_stage_create_info->subpass_configs[0].attachment_references[0];
-    render_stage_create_info->framebuffer_count = 1;
+    render_stage_create_info->framebuffer_count = context->swapchain->image_count;
     render_stage_create_info->framebuffer_create_info = yCMemoryAllocate(sizeof(VkFramebufferCreateInfo) * render_stage_create_info->framebuffer_count);
-    render_stage_create_info->framebuffer_create_info[0].sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    render_stage_create_info->framebuffer_create_info[0].attachmentCount = render_stage_create_info->attachment_count;
-    render_stage_create_info->framebuffer_create_info[0].pAttachments = &resources->shadow_map_image.individual_views[0];
-    render_stage_create_info->framebuffer_create_info[0].width = resources->shadow_map_image.create_info->extent.width;
-    render_stage_create_info->framebuffer_create_info[0].height = resources->shadow_map_image.create_info->extent.height;
-    render_stage_create_info->framebuffer_create_info[0].layers = 1;
+    for(int i = 0; i < render_stage_create_info->framebuffer_count; ++i) {
+        render_stage_create_info->framebuffer_create_info[i].sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        render_stage_create_info->framebuffer_create_info[i].attachmentCount = render_stage_create_info->attachment_count;
+        render_stage_create_info->framebuffer_create_info[i].pAttachments = &resources->shadow_map_image->layer_views[i];
+        render_stage_create_info->framebuffer_create_info[i].width = resources->shadow_map_image->create_info->extent.width;
+        render_stage_create_info->framebuffer_create_info[i].height = resources->shadow_map_image->create_info->extent.height;
+        render_stage_create_info->framebuffer_create_info[i].layers = 1;
+    }
     shadow_mapping_system->render_stage = yVkAllocateRenderStageObject();
     shadow_mapping_system->render_stage->create(context,
                                                 render_stage_create_info,
@@ -78,6 +82,7 @@ static b8 initialize(YsVkContext* context,
     pipeline_vertex_info.flags = 0;
 
     YsVkPipelineConfig* shadow_map_pipeline_config = yCMemoryAllocate(sizeof(YsVkPipelineConfig));
+    shadow_map_pipeline_config->pipeline_type = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     shadow_map_pipeline_config->shader_config.shader_stage_config_count = 2;
     shadow_map_pipeline_config->shader_config.shader_stage_config[0].stage_flag = VK_SHADER_STAGE_VERTEX_BIT;
     shadow_map_pipeline_config->shader_config.shader_stage_config[0].source_length = getSpvCodeSize(Shadow_Map_Vert);
@@ -87,19 +92,19 @@ static b8 initialize(YsVkContext* context,
     shadow_map_pipeline_config->shader_config.shader_stage_config[1].source = getSpvCode(Shadow_Map_Frag);
     shadow_map_pipeline_config->render_stage = shadow_mapping_system->render_stage;
     shadow_map_pipeline_config->vertex_input_info = &pipeline_vertex_info;
-    shadow_map_pipeline_config->descriptor_set_layout_count = 1;
-    shadow_map_pipeline_config->descriptor_set_layouts = (VkDescriptorSetLayout*)yCMemoryAllocate(sizeof(VkDescriptorSetLayout) * shadow_map_pipeline_config->descriptor_set_layout_count);
-    shadow_map_pipeline_config->descriptor_set_layouts[0] = resources->ubo_descriptor->descriptor_set_layout;
+    shadow_map_pipeline_config->descriptor_count = 1;
+    shadow_map_pipeline_config->descriptors = (YsVkDescriptor*)yCMemoryAllocate(sizeof(YsVkDescriptor) * shadow_map_pipeline_config->descriptor_count);
+    shadow_map_pipeline_config->descriptors[0] = resources->ubo_descriptor;
     shadow_map_pipeline_config->viewport.x = 0.0f;
     shadow_map_pipeline_config->viewport.y = 0.0f;
-    shadow_map_pipeline_config->viewport.width = resources->shadow_map_image.create_info->extent.width;
-    shadow_map_pipeline_config->viewport.height = resources->shadow_map_image.create_info->extent.height;
+    shadow_map_pipeline_config->viewport.width = resources->shadow_map_image->create_info->extent.width;
+    shadow_map_pipeline_config->viewport.height = resources->shadow_map_image->create_info->extent.height;
     shadow_map_pipeline_config->viewport.minDepth = 0.0f;
     shadow_map_pipeline_config->viewport.maxDepth = 1.0f;
     shadow_map_pipeline_config->scissor.offset.x = 0;
     shadow_map_pipeline_config->scissor.offset.y = 0;
-    shadow_map_pipeline_config->scissor.extent.width = resources->shadow_map_image.create_info->extent.width;
-    shadow_map_pipeline_config->scissor.extent.height = resources->shadow_map_image.create_info->extent.height;
+    shadow_map_pipeline_config->scissor.extent.width = resources->shadow_map_image->create_info->extent.width;
+    shadow_map_pipeline_config->scissor.extent.height = resources->shadow_map_image->create_info->extent.height;
     shadow_mapping_system->pipeline = yVkAllocatePipelineObject();
     if (!shadow_mapping_system->pipeline->create(context,
                                                  shadow_map_pipeline_config,
@@ -125,35 +130,22 @@ static void cmdDrawCall(YsVkContext* context,
                         YsVkCommandUnit* command_unit,
                         u32 command_buffer_index,
                         YsVkResources* resources,
-                        u32 image_index,
-                        YsVkShadowMappingSystem* shadow_mapping_system,
-                        void* push_constant_data) {
+                        u32 current_present_image_index,
+                        u32 current_frame,
+                        void* push_constant_data,
+                        YsVkShadowMappingSystem* shadow_mapping_system) {
     //
-    VkViewport viewport;
-    viewport.x = 0.0f;
-    viewport.y = 0;
-    viewport.width = (f32)resources->shadow_map_image.create_info->extent.width;
-    viewport.height = (f32)resources->shadow_map_image.create_info->extent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor;
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = resources->shadow_map_image.create_info->extent.width;
-    scissor.extent.height = resources->shadow_map_image.create_info->extent.height;
-
     VkClearValue clear_value;
     clear_value.depthStencil.depth = 1.0f;
     clear_value.depthStencil.stencil = 0;
 
-    vkCmdSetViewport(command_unit->command_buffers[command_buffer_index], 0, 1, &viewport);
-    vkCmdSetScissor(command_unit->command_buffers[command_buffer_index], 0, 1, &scissor);
+    vkCmdSetViewport(command_unit->command_buffers[command_buffer_index], 0, 1, &shadow_mapping_system->pipeline->config->viewport);
+    vkCmdSetScissor(command_unit->command_buffers[command_buffer_index], 0, 1, &shadow_mapping_system->pipeline->config->scissor);
 
     VkRenderPassBeginInfo render_pass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     render_pass_begin_info.renderPass = shadow_mapping_system->render_stage->render_pass_handle;
-    render_pass_begin_info.framebuffer = *shadow_mapping_system->render_stage->framebuffers;
-    render_pass_begin_info.renderArea = scissor;
+    render_pass_begin_info.framebuffer = shadow_mapping_system->render_stage->framebuffers[current_frame];
+    render_pass_begin_info.renderArea = shadow_mapping_system->pipeline->config->scissor;
     render_pass_begin_info.clearValueCount = shadow_mapping_system->render_stage->create_info->attachment_count;
     render_pass_begin_info.pClearValues = &clear_value;
     vkCmdBeginRenderPass(command_unit->command_buffers[command_buffer_index], 
@@ -171,14 +163,20 @@ static void cmdDrawCall(YsVkContext* context,
                            &resources->vertex_input_position_buffer->handle,
                            &vertex_offsets);
 
-    vkCmdBindDescriptorSets(command_unit->command_buffers[command_buffer_index],
+    for(int i = 0; i < shadow_mapping_system->pipeline->config->descriptor_count; ++i) {
+        const VkDescriptorSet* p_descriptor_set = shadow_mapping_system->pipeline->config->descriptors[i].is_single_descriptor_set ?
+                                                  &shadow_mapping_system->pipeline->config->descriptors[i].descriptor_sets[0] :
+                                                  &shadow_mapping_system->pipeline->config->descriptors[i].descriptor_sets[current_frame];
+
+        vkCmdBindDescriptorSets(command_unit->command_buffers[command_buffer_index],
                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                             shadow_mapping_system->pipeline->pipeline_layout,
-                            resources->ubo_descriptor->first_set,
+                            shadow_mapping_system->pipeline->config->descriptors[i].set,
                             1,
-                            &resources->ubo_descriptor->descriptor_sets[image_index],
+                            p_descriptor_set,
                             0,
-                            NULL);                                                    
+                            NULL);              
+    }                                      
 
     vkCmdDraw(command_unit->command_buffers[command_buffer_index],
               resources->current_draw_vertex_count,

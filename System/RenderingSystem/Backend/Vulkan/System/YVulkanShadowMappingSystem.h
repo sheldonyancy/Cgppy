@@ -43,9 +43,10 @@ typedef struct YsVkShadowMappingSystem {
                         struct YsVkCommandUnit* command_unit,
                         u32 command_buffer_index,
                         struct YsVkResources* resources,
-                        u32 image_index,
-                        struct YsVkShadowMappingSystem* shadow_mapping_system,
-                        void* push_constant_data);
+                        u32 current_present_image_index,
+                        u32 current_frame,
+                        void* push_constant_data,
+                        struct YsVkShadowMappingSystem* shadow_mapping_system);
 
     struct YsVkRenderStage* render_stage;
     struct YsVkPipeline* pipeline;

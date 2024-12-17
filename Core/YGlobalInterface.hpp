@@ -44,9 +44,6 @@ public:
 
     std::string readTextFile(const std::string& file_path);
 
-    inline void setMainWindowSize(const glm::ivec2& size) {this->m_main_window_size = size;}
-    inline const glm::ivec2& getMainWindowSize() const {return this->m_main_window_size;}
-
     inline const std::string& getPathExecutable() const {return this->m_path_executable;}
 
     std::string getCurrentThreadId();
@@ -57,8 +54,6 @@ private:
 
 private:
     std::string m_path_executable;
-
-    glm::ivec2 m_main_window_size;
 };
 
 

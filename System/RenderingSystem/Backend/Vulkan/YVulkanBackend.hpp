@@ -43,14 +43,12 @@ public:
     YVulkanBackend();
     ~YVulkanBackend();
 
-    void changingRenderingModel(int model) override;
-
 private:
     void initializeSupportInfo();
 
     void shutdown();
 
-    b8 framePrepare(i32* accumulate_image_index) override;
+    b8 framePrepare() override;
     b8 frameRun() override;
     b8 framePresent() override;
 

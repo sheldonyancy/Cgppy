@@ -25,8 +25,7 @@
 #include "YTrackball.hpp"
 #include "YDefines.h"
 #include "YGlobalInterface.hpp"
-#include "YRendererBackendManager.hpp"
-#include "YRendererBackend.hpp"
+#include "YRendererFrontendManager.hpp"
 #include "YLogger.h"
 
 
@@ -47,8 +46,9 @@ glm::quat YTrackball::getRotation(glm::fvec2 start_position, glm::fvec2 end_posi
 }
 
 glm::fvec3 YTrackball::mapToSphere(int x, int y) {
-    float x_ndc = (float(x) / YGlobalInterface::instance()->getMainWindowSize().x - 0.5) * 2.0;
-    float y_ndc = (float(y) / YGlobalInterface::instance()->getMainWindowSize().y - 0.5) * 2.0;
+    glm::fvec2 window_size = YRendererFrontendManager::instance()->mainWindowSize();
+    float x_ndc = (float(x) / window_size.x - 0.5) * 2.0;
+    float y_ndc = (float(y) / window_size.y - 0.5) * 2.0;
     glm::fvec2 point(x_ndc, y_ndc);
     float length2 = point.x * point.x + point.y * point.y;
 

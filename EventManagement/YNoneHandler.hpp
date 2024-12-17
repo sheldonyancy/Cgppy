@@ -40,6 +40,10 @@ private:
     void handleEvent(const YsMouseEvent& event);
     void handleEvent(const YsUpdateSceneEvent& event);
     void handleEvent(const YsChangingRenderingModelEvent& event);
+    void handleEvent(const YsChangingPathTracingSppEvent& event);
+    void handleEvent(const YsChangingPathTracingMaxDepthEvent& event);
+    void handleEvent(const YsChangingPathTracingEnableBvhAccelerationEvent& event);
+    void handleEvent(const YsChangingPathTracingEnableDenoiserEvent& event);
 
 private:
     YsMouseEvent m_mouse_press;

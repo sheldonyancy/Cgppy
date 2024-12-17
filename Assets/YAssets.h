@@ -47,8 +47,7 @@ enum YeAssetsShader{
     Rasterization_Frag,
     Shadow_Map_Vert,
     Shadow_Map_Frag,
-    Path_Tracing_Vert,
-    Path_Tracing_Frag,
+    Path_Tracing_Comp
 };
 
 void yInitAssets();

@@ -33,16 +33,6 @@
 extern "C" {
 #endif
 
-typedef struct YsVkCommandUnit {
-    u32 queue_family_index;
-    u32 queue_index;
-    VkQueue queue;
-    u32 command_pool_count;
-    VkCommandPool* command_pools;
-    u32 command_buffer_count;
-    VkCommandBuffer* command_buffers;
-    VkQueryPool query_pool_timestamps;
-}YsVkCommandUnit;
 
 typedef struct YsVkDevice {
     b8 (*create)(struct YsVkContext* context);

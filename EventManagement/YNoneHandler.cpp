@@ -113,6 +113,8 @@ void YNoneHandler::handleEvent(const YsMouseEvent& event) {
                 scale_matrix = glm::scale(glm::fmat4x4(1.0), glm::fvec3(0.95, 0.95, 0.95));
             }
             YSceneManager::instance()->applyScale(scale_matrix);
+            YRendererBackendManager::instance()->backend()->updateHostUbo();
+            
             break;
         }
     }
@@ -130,6 +132,21 @@ void YNoneHandler::handleEvent(const YsUpdateSceneEvent& event) {
 }
 
 void YNoneHandler::handleEvent(const YsChangingRenderingModelEvent& event) {
-    YRendererBackendManager::instance()->backend()->changingRenderingModel(static_cast<int>(event.type));
+    YRendererBackendManager::instance()->backend()->updateHostUbo();
+}
+
+void YNoneHandler::handleEvent(const YsChangingPathTracingSppEvent& event) {
+    YRendererBackendManager::instance()->backend()->updateHostUbo();
+}
+
+void YNoneHandler::handleEvent(const YsChangingPathTracingMaxDepthEvent& event) {
+    YRendererBackendManager::instance()->backend()->updateHostUbo();
+}
+
+void YNoneHandler::handleEvent(const YsChangingPathTracingEnableBvhAccelerationEvent& event) {
+    YRendererBackendManager::instance()->backend()->updateHostUbo();
+}
+
+void YNoneHandler::handleEvent(const YsChangingPathTracingEnableDenoiserEvent& event) {
     YRendererBackendManager::instance()->backend()->updateHostUbo();
 }

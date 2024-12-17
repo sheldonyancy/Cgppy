@@ -52,8 +52,7 @@ void yInitAssets() {
     g_glsl_file_map.emplace(YeAssetsShader::Rasterization_Frag, project_path + "/Assets/Shader/GLSL/rasterization.frag");
     g_glsl_file_map.emplace(YeAssetsShader::Shadow_Map_Vert, project_path + "/Assets/Shader/GLSL/shadow_map.vert");
     g_glsl_file_map.emplace(YeAssetsShader::Shadow_Map_Frag, project_path + "/Assets/Shader/GLSL/shadow_map.frag");
-    g_glsl_file_map.emplace(YeAssetsShader::Path_Tracing_Vert, project_path + "/Assets/Shader/GLSL/path_tracing.vert");
-    g_glsl_file_map.emplace(YeAssetsShader::Path_Tracing_Frag, project_path + "/Assets/Shader/GLSL/path_tracing.frag");
+    g_glsl_file_map.emplace(YeAssetsShader::Path_Tracing_Comp, project_path + "/Assets/Shader/GLSL/path_tracing.comp");
 
     std::string spv_glsl_dir_str = exe_path + "/Assets/Shader/spv_glsl";
     std::filesystem::path spv_glsl_dir = spv_glsl_dir_str;
@@ -72,8 +71,7 @@ void yInitAssets() {
     g_spv_file_map.emplace(YeAssetsShader::Rasterization_Frag, spv_glsl_dir_str + "/rasterization.frag.spv");
     g_spv_file_map.emplace(YeAssetsShader::Shadow_Map_Vert, spv_glsl_dir_str + "/shadow_map.vert.spv");
     g_spv_file_map.emplace(YeAssetsShader::Shadow_Map_Frag, spv_glsl_dir_str + "/shadow_map.frag.spv");
-    g_spv_file_map.emplace(YeAssetsShader::Path_Tracing_Vert, spv_glsl_dir_str + "/path_tracing.vert.spv");
-    g_spv_file_map.emplace(YeAssetsShader::Path_Tracing_Frag, spv_glsl_dir_str + "/path_tracing.frag.spv");
+    g_spv_file_map.emplace(YeAssetsShader::Path_Tracing_Comp, spv_glsl_dir_str + "/path_tracing.comp.spv");
 
     YShaderManager::instance();
 }

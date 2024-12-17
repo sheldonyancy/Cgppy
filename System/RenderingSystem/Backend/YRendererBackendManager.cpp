@@ -23,7 +23,7 @@
  */
 
 #include "YRendererBackendManager.hpp"
-#include "RenderingSystem/Backend/Vulkan/YVulkanBackend.hpp"
+#include "YVulkanBackend.hpp"
 #include "YOpenGLBackend.hpp"
 
 
@@ -33,7 +33,8 @@ YRendererBackendManager* YRendererBackendManager::instance() {
 }
 
 YRendererBackendManager::YRendererBackendManager()
-    : m_current_renderer_backend_api(YeRendererBackendApi::VULKAN){
+    : m_current_renderer_backend_api(YeRendererBackendApi::VULKAN),
+      m_renderer_resolution(YeRendererResolution::Double){
 
 }
 
@@ -43,8 +44,4 @@ YRendererBackendManager::~YRendererBackendManager() {
 
 void YRendererBackendManager::initBackend() {
     this->m_renderer_backend.insert(std::make_pair(YeRendererBackendApi::VULKAN, std::make_unique<YVulkanBackend>()));
-}
-
-u32 YRendererBackendManager::samples() {
-    return this->backend()->samples();
 }

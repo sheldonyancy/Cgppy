@@ -26,10 +26,12 @@
 #define CGPPY_YOPENGLBACKEND_HPP
 
 
+#include <GL/glew.h>
+
+
 #include "YRendererBackend.hpp"
 #include "YDefines.h"
 
-#include <GL/glew.h>
 
 #include <list>
 #include <memory>
@@ -37,13 +39,13 @@
 struct YsEntity;
 
 
-typedef struct {
+typedef struct YsShaderInfo{
     GLenum type = 0;
     const i8* file_name = nullptr;
     GLuint shader = 0;
 } YsShaderInfo;
 
-typedef struct {
+typedef struct YsGLObject{
     i32 tpye = 0;
 
     GLuint vao_object = 0;

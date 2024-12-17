@@ -244,13 +244,14 @@ static b8 yVkDebuggerCreate(YsVkContext* context) {
     return true;
 }
 
-static b8 initialize(struct GLFWwindow* glfw_window,
+static b8 initialize(u32 swapchain_width,
+                     u32 swapchain_height,
+                     struct GLFWwindow* glfw_window,
                      const i8* const* enable_extensions,
                      i32 enable_extensions_count,
                      const i8* const* enable_layers,
                      i32 enable_layers_count,
                      YsVkContext* context) {
-    glfwGetFramebufferSize(glfw_window, &context->framebuffer_width, &context->framebuffer_height);
     context->find_memory_index = yVkFindMemoryIndex;
     context->allocator = NULL;
 
@@ -277,7 +278,10 @@ static b8 initialize(struct GLFWwindow* glfw_window,
     }
 
     // Surface
-    if (glfwCreateWindowSurface(context->instance, glfw_window, NULL, &context->surface) != VK_SUCCESS) {
+    if (glfwCreateWindowSurface(context->instance, 
+                                glfw_window, 
+                                NULL, 
+                                &context->surface) != VK_SUCCESS) {
         YFATAL("failed to create window surface!");
     }
 
@@ -291,8 +295,8 @@ static b8 initialize(struct GLFWwindow* glfw_window,
     // Swapchain
     context->swapchain = yVkAllocateSwapchainObject();
     context->swapchain->create(context,
-                               context->framebuffer_width,
-                               context->framebuffer_height,
+                               swapchain_width,
+                               swapchain_height,
                                VK_PRESENT_MODE_FIFO_KHR, //VK_PRESENT_MODE_IMMEDIATE_KHR,
                                context->swapchain);
     YINFO("Vulkan Context Initialized Successfully.");

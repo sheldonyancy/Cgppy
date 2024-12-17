@@ -29,8 +29,8 @@
 #include "define.glsl"
 #include "struct.glsl"
 #include "uniform_buffer_object.glsl"
+#include "uniform_sampler_shadow_mapping.glsl"
 
-layout(set = 2, binding = 1) uniform sampler2D shadow_mapping;
 
 layout(location = 0) in struct dto {
     vec3 position;
@@ -66,7 +66,7 @@ vec4 illuminationBlinnPhong() {
         float shadow = 1.0;
         vec3 shadow_coord = in_dto.shadow_coord.xyz / in_dto.shadow_coord.w;
         if ( shadow_coord.z > -1.0 && shadow_coord.z < 1.0 ){
-            float dist = texture(shadow_mapping, shadow_coord.st).r;
+            float dist = texture(uniform_shadow_mapping_sampler, shadow_coord.st).r;
             if (dist + 0.001 < shadow_coord.z) {
                 shadow = AMBIENT_STRENGTH;
             }

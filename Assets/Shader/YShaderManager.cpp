@@ -70,8 +70,7 @@ void YShaderManager::init() {
     this->compileGlslToSpv(YeAssetsShader::Rasterization_Frag, shaderc_fragment_shader);
     this->compileGlslToSpv(YeAssetsShader::Shadow_Map_Vert, shaderc_vertex_shader);
     this->compileGlslToSpv(YeAssetsShader::Shadow_Map_Frag, shaderc_fragment_shader);
-    this->compileGlslToSpv(YeAssetsShader::Path_Tracing_Vert, shaderc_vertex_shader);
-    this->compileGlslToSpv(YeAssetsShader::Path_Tracing_Frag, shaderc_fragment_shader);
+    this->compileGlslToSpv(YeAssetsShader::Path_Tracing_Comp, shaderc_compute_shader);
 #else
     this->readSpv(YeAssetsShader::Output_Vert);
     this->readSpv(YeAssetsShader::Output_Frag);
@@ -79,8 +78,7 @@ void YShaderManager::init() {
     this->readSpv(YeAssetsShader::Rasterization_Frag);
     this->readSpv(YeAssetsShader::Shadow_Map_Vert);
     this->readSpv(YeAssetsShader::Shadow_Map_Frag);
-    this->readSpv(YeAssetsShader::Path_Tracing_Vert);
-    this->readSpv(YeAssetsShader::Path_Tracing_Frag);
+    this->readSpv(YeAssetsShader::Path_Tracing_Comp);
 #endif
 }
 

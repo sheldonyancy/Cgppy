@@ -26,9 +26,10 @@
 #define CGPPY_YRENDERERFRONTENDMANAGER_HPP
 
 
-class YGlfwWindow;
+struct GLFWwindow;
 class YCamera;
 class YTrackball;
+
 
 #include <memory>
 
@@ -49,7 +50,8 @@ public:
 
     void eventLoop();
 
-    inline YGlfwWindow* glfwWindow() { return this->m_glfw_window.get();}
+    inline GLFWwindow* glfwWindow() {return this->m_glfw_window;}
+    inline const glm::ivec2& mainWindowSize() {return this->m_main_window_size;}
     inline YCamera* camera() {return this->m_camera.get();}
     inline YTrackball* trackball() {return this->m_trackball.get();}
 
@@ -63,12 +65,20 @@ private:
     YRendererFrontendManager();
     ~YRendererFrontendManager();
 
+    void initVulkanEnv();
+
+    void initOpenGLEnv();
+    void checkOpenGLInfo();
+
 private:
-    std::unique_ptr<YGlfwWindow> m_glfw_window;
+    GLFWwindow* m_glfw_window;
 
     std::unique_ptr<YCamera> m_camera;
 
     std::unique_ptr<YTrackball> m_trackball;
+
+    glm::ivec2 m_main_window_size;
+    glm::ivec2 m_main_window_framebuffer_size;
 };
 
 

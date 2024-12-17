@@ -99,6 +99,8 @@ struct alignas(16) GLSL_SSBO {
 
 struct alignas(16) GLSL_UBO{
     int rendering_model;
+    int path_tracing_spp;
+    int path_tracing_max_depth;
     alignas(16) glm::fmat4x4 model_matrix;
     GLSL_RasterizationCamera rasterization_camera;
     GLSL_PhysicallyBasedCamera physically_based_camera;
@@ -106,9 +108,7 @@ struct alignas(16) GLSL_UBO{
 };
 
 struct alignas(16) GLSL_PushConstantObject {
-    int accumulate_image_index;
-    float total_samples;
-    float frame_samples[3];
+    int current_present_image_index;
     int current_frame;
 };
 

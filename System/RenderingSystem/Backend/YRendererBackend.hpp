@@ -42,14 +42,11 @@
 
 struct YsBVHNodeComponent;
 
-enum class YeRendererBackendApi : unsigned char {
-    VULKAN,
-    METAL,
-    DIRECTX12,
-    OPENGL,
-    CPU
+struct YsFrameStatus {
+    bool need_draw_shadow_mapping = true;
+    bool need_draw_rasterization = true;
+    bool need_draw_path_tracing = true;
 };
-
 
 class YRendererBackend {
 public:
@@ -62,16 +59,12 @@ public:
     inline void setNeedDraw(bool status) {this->m_need_draw = status;}
     void draw();
 
-    virtual void changingRenderingModel(int model) = 0;
-
-    inline i32 samples() {return this->m_push_constant.total_samples;}
-
     void rotatePhysicallyBasedCamera(const glm::fquat& rotation);
 
 protected:
     YRendererBackend();
 
-    virtual b8 framePrepare(i32* accumulate_image_index) = 0;
+    virtual b8 framePrepare() = 0;
     virtual b8 frameRun() = 0;
     virtual b8 framePresent() = 0;
 
@@ -92,9 +85,7 @@ protected:
 
     bool m_need_draw;
 
-    bool m_need_draw_shadow_mapping;
-    bool m_need_draw_rasterization;
-    bool m_need_draw_path_tracing;
+    YsFrameStatus m_frame_status[3];
 
     bool m_need_update_device_vertex_input;
     bool m_need_update_device_ssbo;
@@ -111,12 +102,14 @@ protected:
     // ubo_data
     GLSL_UBO m_ubo = {};
     // push_constant_data
-    GLSL_PushConstantObject m_push_constant = {};
+    GLSL_PushConstantObject m_push_constant[3] = {};
 
     //
-    glm::ivec2 m_frame_buffer_size;
-    u32 m_image_index;
+    u32 m_current_present_image_index;
     u32 m_current_frame;
+
+    //
+    
 };
 
 

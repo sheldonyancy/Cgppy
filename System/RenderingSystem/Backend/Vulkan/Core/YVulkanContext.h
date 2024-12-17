@@ -44,7 +44,9 @@ extern "C" {
 struct GLFWwindow;
 
 typedef struct YsVkContext {
-    b8 (*initialize)(struct GLFWwindow* glfw_window,
+    b8 (*initialize)(u32 swapchain_width,
+                     u32 swapchain_height,
+                     struct GLFWwindow* glfw_window,
                      const i8* const*,
                      i32,
                      const i8* const*,
@@ -66,9 +68,6 @@ typedef struct YsVkContext {
     u32 api_minor;
 
     u32 api_patch;
-
-    i32 framebuffer_width;
-    i32 framebuffer_height;
 
 #ifndef NDEBUG
     VkDebugUtilsMessengerEXT debug_messenger;

@@ -27,6 +27,7 @@
 #include "YSceneManager.hpp"
 #include "YEntity.hpp"
 #include "YRendererFrontendManager.hpp"
+#include "YRendererBackendManager.hpp"
 #include "YCamera.hpp"
 #include "YMeshComponent.hpp"
 #include "YAssets.h"
@@ -74,8 +75,6 @@ YOpenGLBackend::YOpenGLBackend()
       m_program_image_object(0),
       m_gl_object_result(new YsGLObject),
       m_mvp_mat(glm::mat4(1.0f)) {
-
-    this->m_framebuffer_texture_size = YGlobalInterface::instance()->getMainWindowSize();
 
     this->initFramebuffer();
 
